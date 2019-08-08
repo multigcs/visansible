@@ -7,6 +7,7 @@
 import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import subprocess
 
 from HtmlPage import *
 from VisGraph import *
@@ -51,17 +52,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
 					productname = groups[group]["hosts"][host]["ansible_facts"]["ansible_product_name"]
 					architecture = groups[group]["hosts"][host]["ansible_facts"]["ansible_architecture"]
-
 					if osfamily == "Debian":
 						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "debian", "font: {color: '#0000FF'}")
 					elif osfamily == "RedHat":
 						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "hat-fedora", "font: {color: '#0000FF'}")
 					else:
 						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "monitor", "font: {color: '#0000FF'}")
-
 					if mode == "network":
 						self.show_host_graph_network(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host, True)
-
 				elif "msg" in groups[group]["hosts"][host]:
 					graph.node_add("host_" + host, host + "\\n" + groups[group]["hosts"][host]["msg"].strip().replace(":", "\\n"), "monitor", "font: {color: '#FF0000'}")
 				else:
@@ -807,73 +805,66 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		for group in groups:
 			for host in groups[group]["hosts"]:
 				if hostname == host:
+					
+					if "ansible_facts" in groups[group]["hosts"][host]:
 
-					osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
-					if osfamily == "Debian":
-						icon = "debian"
-					elif osfamily == "RedHat":
-						icon = "hat-fedora"
+						osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
+						if osfamily == "Debian":
+							icon = "debian"
+						elif osfamily == "RedHat":
+							icon = "hat-fedora"
+						else:
+							icon = "linux"
+
+						html.add(" <div class='row'>\n")
+						html.add("  <div class='col-6'>\n")
+						html.add(self.show_host_table_general(groups[group]["hosts"][host]["ansible_facts"]))
+						html.add("  </div>\n")
+						html.add("  <div class='col-6'>\n")
+						html.add(self.show_host_table_processors(groups[group]["hosts"][host]["ansible_facts"]))
+						html.add("  </div>\n")
+						html.add("  <div class='col-6'>\n")
+						html.add(self.show_host_table_memory(groups[group]["hosts"][host]["ansible_facts"]))
+						html.add("  </div>\n")
+						html.add("  <div class='col-6'>\n")
+						html.add(self.show_host_table_network(groups[group]["hosts"][host]["ansible_facts"]))
+						html.add("  </div>\n")
+						html.add(" </div>\n")
+
+						html.add(" <div class='row'>\n")
+						html.add(self.show_host_table_ifaces(groups[group]["hosts"][host]["ansible_facts"]))
+						html.add("  <div class='col-12'>\n")
+						html.add("  <div class='card'>\n")
+						html.add("   <div class='card-header'>Network-Graph<img class='float-right' src='assets/MaterialDesignIcons/net.svg'></div>\n")
+						html.add("   <div class='card-body'>\n")
+						graph = VisGraph("vis_network")
+						graph.node_add("host_" + host, host, icon)
+						self.show_host_graph_network(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
+						html.add(graph.end(direction = "LR"))
+						html.add("   </div>\n")
+						html.add("   </div>\n")
+						html.add("  </div>\n")
+						html.add(" </div>\n")
+
+						html.add(" <div class='row'>\n")
+						html.add(self.show_host_table_disks(groups[group]["hosts"][host]["ansible_facts"]))
+						html.add("  <div class='col-12'>\n")
+						html.add("  <div class='card'>\n")
+						html.add("   <div class='card-header'>Disks-Graph<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n")
+						html.add("   <div class='card-body'>\n")
+						graph = VisGraph("vis_disks")
+						graph.node_add("host_" + host, host, icon)
+						self.show_host_graph_disks(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
+						html.add(graph.end(direction = "UD"))
+						html.add("   </div>\n")
+						html.add("  </div>\n")
+						html.add("  </div>\n")
+						html.add(" </div>\n")
 					else:
-						icon = "linux"
-
-					html.add(" <div class='row'>\n")
-					html.add("  <div class='col-6'>\n")
-					html.add(self.show_host_table_general(groups[group]["hosts"][host]["ansible_facts"]))
-					html.add("  </div>\n")
-					html.add("  <div class='col-6'>\n")
-					html.add(self.show_host_table_processors(groups[group]["hosts"][host]["ansible_facts"]))
-					html.add("  </div>\n")
-					html.add("  <div class='col-6'>\n")
-					html.add(self.show_host_table_memory(groups[group]["hosts"][host]["ansible_facts"]))
-					html.add("  </div>\n")
-					html.add("  <div class='col-6'>\n")
-					html.add(self.show_host_table_network(groups[group]["hosts"][host]["ansible_facts"]))
-					html.add("  </div>\n")
-					html.add(" </div>\n")
-
-
-					html.add(" <div class='row'>\n")
-					html.add(self.show_host_table_ifaces(groups[group]["hosts"][host]["ansible_facts"]))
-					html.add("  <div class='col-12'>\n")
-					html.add("  <div class='card'>\n")
-					html.add("   <div class='card-header'>Network-Graph<img class='float-right' src='assets/MaterialDesignIcons/net.svg'></div>\n")
-					html.add("   <div class='card-body'>\n")
-					graph = VisGraph("vis_network")
-					graph.node_add("host_" + host, host, icon)
-					self.show_host_graph_network(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-					html.add(graph.end(direction = "LR"))
-					html.add("   </div>\n")
-					html.add("   </div>\n")
-					html.add("  </div>\n")
-					html.add(" </div>\n")
-
-
-					html.add(" <div class='row'>\n")
-					html.add(self.show_host_table_disks(groups[group]["hosts"][host]["ansible_facts"]))
-					html.add("  <div class='col-12'>\n")
-					html.add("  <div class='card'>\n")
-					html.add("   <div class='card-header'>Disks-Graph<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n")
-					html.add("   <div class='card-body'>\n")
-					graph = VisGraph("vis_disks")
-					graph.node_add("host_" + host, host, icon)
-					self.show_host_graph_disks(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-					html.add(graph.end(direction = "UD"))
-					html.add("   </div>\n")
-					html.add("  </div>\n")
-					html.add("  </div>\n")
-					html.add(" </div>\n")
-
-
-
-
-#					print(json.dumps(groups[group]["hosts"][host]["ansible_facts"], indent=4, sort_keys=True));
-
-
-#					graph = VisGraph()
-#					self.show_host_graph_disks(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-#					self.show_host_graph_network(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-#					html += graph.end(direction = "UD")
-
+						if "msg" in groups[group]["hosts"][host]:
+							html.add(" <b>" + groups[group]["hosts"][host]["msg"].strip() + "</b>\n")
+						else:
+							html.add(" <b>UNKNOWN-ERROR</b>\n")
 
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
@@ -884,50 +875,57 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 	def show_hosts(self):
 		options = ["ansible_fqdn", "ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_product_serial"]
-
 		html = HtmlPage("Visansible - Hosts");
-
 		html.add(" <div class='row'>\n")
 		html.add("  <div class='col-12'>\n")
-
-		html.add("<table width=90%>\n")
+		html.add("<table class='table table-hover' width='90%'>\n")
 		for group in groups:
 			html.add("<tr>\n")
-			html.add(" <td colspan='" + str(len(options)) + "'><h2>Group: " + group + "</h2></td>\n")
+			html.add(" <td colspan='" + str(len(options) + 3) + "'><h2>Group: " + group + "</h2></td>\n")
 			html.add("</tr>\n")
 			html.add("<tr>\n")
+			html.add(" <th>Host</th>\n")
 			for option in options:
 				title = option.replace("ansible_", "").capitalize()
 				html.add(" <th>" + title + "</th>\n")
+			html.add(" <th width='10%'>Options</th>\n")
+			html.add(" <th width='10%'>Status</th>\n")
 			html.add("</tr>\n")
 			for host in groups[group]["hosts"]:
-				if "ansible_facts" in groups[group]["hosts"][host]:
-					html.add("<tr>\n")
-					for option in options:
-						if option in groups[group]["hosts"][host]["ansible_facts"]:
-							value = str(groups[group]["hosts"][host]["ansible_facts"][option])
-							if option == "ansible_fqdn":
-								html.add("<td width='10%'>")
-								html.add("<a href='/?host=" + host + "'>")
-								osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
-								if osfamily == "Debian":
-									html.add("<img src='assets/MaterialDesignIcons/debian.svg' />\n")
-								elif osfamily == "RedHat":
-									html.add("<img src='assets/MaterialDesignIcons/hat-fedora.svg' />\n")
-								else:
-									html.add("<img src='assets/MaterialDesignIcons/monitor.svg' />\n")
+				html.add("<tr>\n")
+				html.add(" <td width='10%'><a href='/?host=" + host + "'>" + host + "</a></td>\n")
+				for option in options:
+					if "ansible_facts" in groups[group]["hosts"][host] and option in groups[group]["hosts"][host]["ansible_facts"]:
+						value = str(groups[group]["hosts"][host]["ansible_facts"][option])
+						if option == "ansible_fqdn":
+							html.add("<td width='10%'>")
+							osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
+							if osfamily == "Debian":
+								html.add("<img src='assets/MaterialDesignIcons/debian.svg' />\n")
+							elif osfamily == "RedHat":
+								html.add("<img src='assets/MaterialDesignIcons/hat-fedora.svg' />\n")
 							else:
-								html.add("<td>")
-							html.add(value)
-							if option == "ansible_fqdn":
-								html.add("</a>")
-							html.add("</td>\n")
+								html.add("<img src='assets/MaterialDesignIcons/monitor.svg' />\n")
 						else:
-							html.add(" <td>&nbsp;</td>\n")
-					html.add("</tr>\n")
-			html.add("<tr>\n")
-			html.add(" <td colspan='" + str(len(options)) + "'>&nbsp;</td>\n")
-			html.add("</tr>\n")
+							html.add("<td>")
+						html.add(value)
+						html.add("</td>\n")
+					else:
+						html.add(" <td>---</td>\n")
+
+				if "options" in groups[group]["hosts"][host]:
+					html.add(" <td>" + ", ".join(groups[group]["hosts"][host]["options"]) + "</td>\n")
+				else:
+					html.add(" <td>---</td>\n")
+
+				if "msg" in groups[group]["hosts"][host]:
+					html.add(" <td>" + groups[group]["hosts"][host]["msg"].strip() + "</td>\n")
+				elif "ansible_facts" in groups[group]["hosts"][host]:
+					html.add(" <td>OK</td>\n")
+				else:
+					html.add(" <td>UNKNOWN-ERROR</td>\n")
+
+				html.add("</tr>\n")
 		html.add("</table>\n")
 		html.add("<br />\n")
 
@@ -946,11 +944,27 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	def do_GET(self):
 		print(self.path)
 		if self.path.startswith("/rescan"):
-			os.system("ansible -i inventory.cfg all -m setup --tree facts")
+			command = ['ansible', '-i', 'inventory.cfg', 'all', '-m', 'setup', '--tree', 'facts']
+			result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+			html = HtmlPage("Visansible - Rescan");
+			html.add("<b>command:</b>")
+			html.add("<pre>")
+			html.add(" ".join(command))
+			html.add("</pre>")
+			if result.stderr.decode('utf-8') != "":
+				html.add("<b>stderr:</b>")
+				html.add("<pre>")
+				html.add(result.stderr.decode('utf-8'))
+				html.add("</pre>")
+			if result.stdout.decode('utf-8') != "":
+				html.add("<b>stdout:</b>")
+				html.add("<pre>")
+				html.add(result.stdout.decode('utf-8'))
+				html.add("</pre>")
 			self.send_response(200)
-			self.send_header("Content-type", "text/plain")
+			self.send_header("Content-type", "text/html")
 			self.end_headers()
-			self.wfile.write(bytes("DONE", "utf8"))
+			self.wfile.write(bytes(html.end(), "utf8"))
 			return
 		elif self.path.startswith("/assets/"):
 			if ".." in self.path:
@@ -1080,19 +1094,19 @@ def inventory_read():
 				groups[group]["options"] = {}
 			misc = False
 		elif misc == True and line.strip() != "":
-			print(line)
 			name = line.split("=")[0].strip()
 			value = line.split("=")[1].strip()
 			groups[group]["options"][section] = {}
 			groups[group]["options"][section][name] = value
 		elif misc == False and line.strip() != "":
 			host = line.split(" ")[0]
-			print(host)
 			groups[group]["hosts"][host] = {}
+			host_options = line.split(" ")[1:]
 			if os.path.isfile("./facts/" + host):
 				with open("./facts/" + host) as json_file:
 					hostdata = json.load(json_file)
 					groups[group]["hosts"][host] = hostdata
+			groups[group]["hosts"][host]["options"] = host_options
 
 
 
@@ -1113,8 +1127,6 @@ print(json.dumps(groups, indent=4, sort_keys=True))
 #		os.system("ssh-keyscan " + host + " >> /root/.ssh/known_hosts")
 #os.system("ansible -i inventory.cfg all -m setup --tree facts")
 inventory_read()
-
-
 
 
 

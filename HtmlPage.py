@@ -116,6 +116,7 @@ body {
         <a href="/" class="list-group-item list-group-item-action bg-light">Groups</a>
         <a href="/?mode=network" class="list-group-item list-group-item-action bg-light">Network</a>
         <a href="/?mode=hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
+        <a href="/rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
       </div>
     </div>
     <!-- /#sidebar-wrapper -->

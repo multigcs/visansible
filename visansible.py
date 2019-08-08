@@ -72,15 +72,15 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		else:
 			html.add(graph.end(direction = "UD"))
 
-		for group in groups:
-			html.add(group + "<br />")
-			for host in groups[group]["hosts"]:
-				html.add("<hr />\n")
-				html.add("&nbsp;" + host + "<br />\n")
-				if "ansible_facts" in groups[group]["hosts"][host]:
-					html.add(self.show_element(groups[group]["hosts"][host]["ansible_facts"], "&nbsp;&nbsp;"))
-				else:
-					html.add("ERROR: " + host + "<br />\n")
+#		for group in groups:
+#			html.add(group + "<br />")
+#			for host in groups[group]["hosts"]:
+#				html.add("<hr />\n")
+#				html.add("&nbsp;" + host + "<br />\n")
+#				if "ansible_facts" in groups[group]["hosts"][host]:
+#					html.add(self.show_element(groups[group]["hosts"][host]["ansible_facts"], "&nbsp;&nbsp;"))
+#				else:
+#					html.add("ERROR: " + host + "<br />\n")
 
 
 		self.send_response(200)

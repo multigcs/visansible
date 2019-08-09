@@ -19,6 +19,8 @@ class HtmlPage():
 		self.html += " <script type='text/javascript' src='assets/jquery/jquery.min.js'></script>\n"
 		self.html += " <script type='text/javascript' src='assets/vis/vis.min.js'></script>\n"
 		self.html += " <script type='text/javascript' src='assets/bootstrap/js/bootstrap.min.js'></script>\n"
+		self.html += " <script type='text/javascript' src='assets/d3/d3.min.js'></script>\n"
+		self.html += " <script type='text/javascript' src='assets/d3/d3pie.min.js'></script>\n"
 
 		self.html += "<style>\n"
 		self.html += """
@@ -116,6 +118,7 @@ body {
         <a href="/" class="list-group-item list-group-item-action bg-light">Groups</a>
         <a href="/?mode=network" class="list-group-item list-group-item-action bg-light">Network</a>
         <a href="/?mode=hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
+        <a href="/?mode=stats" class="list-group-item list-group-item-action bg-light">Stats</a>
         <a href="/rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
       </div>
     </div>

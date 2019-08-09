@@ -1103,6 +1103,115 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		self.wfile.write(bytes(html.end(), "utf8"))
 		return
 
+	def show_stats(self):
+		colors = ["#cb2121", "#830909", "#923e99", "#ae83d5", "#111111", "#050505", "#646464", "#747474", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888", "#999999", "#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]
+		options = ["ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_distribution", "ansible_kernel", "ansible_processor_count", "ansible_distribution_release", "ansible_virtualization_role", "ansible_virtualization_type"]
+		html = HtmlPage("Visansible - Hosts");
+
+		stats = {}
+		for option in options:
+			stats[option] = {}
+		for group in groups:
+			for host in groups[group]["hosts"]:
+				for option in options:
+					value = groups[group]["hosts"][host]["ansible_facts"][option];
+					if value not in stats[option]:
+						stats[option][value] = 0
+					stats[option][value] += 1
+
+		html.add("<div class='row'>\n")
+		for option in options:
+			html.add("<div class='col-4'>\n")
+			html.add("<div id='pieChart_" + option + "'></div>\n")
+			html.add("</div>\n")
+		html.add("</div>\n")
+
+		for option in options:
+			html.add("<script>\n")
+			html.add("var pie = new d3pie('pieChart_" + option + "', {\n")
+			html.add("	'header': {\n")
+			html.add("		'title': {\n")
+			html.add("			'text': '" + option.replace("ansible_", "").capitalize() + "',\n")
+			html.add("			'fontSize': 14,\n")
+			html.add("			'font': 'courier'\n")
+			html.add("		},\n")
+			html.add("		'subtitle': {\n")
+			html.add("			'text': '" + option + "',\n")
+			html.add("			'color': '#999999',\n")
+			html.add("			'fontSize': 10,\n")
+			html.add("			'font': 'courier'\n")
+			html.add("		},\n")
+			html.add("		'location': 'pie-center',\n")
+			html.add("		'titleSubtitlePadding': 10\n")
+			html.add("	},\n")
+			html.add("	'size': {\n")
+			html.add("		'canvasWidth': 390,\n")
+			html.add("		'canvasHeight': 360,\n")
+			html.add("		'pieInnerRadius': '90%',\n")
+			html.add("		'pieOuterRadius': '50%'\n")
+			html.add("	},\n")
+			html.add("	'data': {\n")
+			html.add("		'sortOrder': 'label-desc',\n")
+			html.add("		'content': [\n")
+			color_n = 0
+			for label in stats[option]:
+				html.add("{\n")
+				html.add(" 'label': '" + str(stats[option][label]) + "x " + str(label) + "',\n")
+				html.add(" 'color': '" + colors[color_n] + "',\n")
+				html.add(" 'value': " + str(stats[option][label]) + ",\n")
+				html.add("},\n")
+				color_n += 1
+			html.add("		]\n")
+			html.add("	},\n")
+			html.add("	'labels': {\n")
+			html.add("		'outer': {\n")
+			html.add("			'format': 'label-percentage1',\n")
+			html.add("			'pieDistance': 20\n")
+			html.add("		},\n")
+			html.add("		'inner': {\n")
+			html.add("			'format': 'none'\n")
+			html.add("		},\n")
+			html.add("		'mainLabel': {\n")
+			html.add("			'fontSize': 11\n")
+			html.add("		},\n")
+			html.add("		'percentage': {\n")
+			html.add("			'color': '#999999',\n")
+			html.add("			'fontSize': 11,\n")
+			html.add("			'decimalPlaces': 0\n")
+			html.add("		},\n")
+			html.add("		'value': {\n")
+			html.add("			'color': '#cccc43',\n")
+			html.add("			'fontSize': 11\n")
+			html.add("		},\n")
+			html.add("		'lines': {\n")
+			html.add("			'enabled': true,\n")
+			html.add("			'color': '#777777'\n")
+			html.add("		},\n")
+			html.add("		'truncation': {\n")
+			html.add("			'enabled': true\n")
+			html.add("		}\n")
+			html.add("	},\n")
+			html.add("	'effects': {\n")
+			html.add("		'pullOutSegmentOnClick': {\n")
+			html.add("			'effect': 'linear',\n")
+			html.add("			'speed': 400,\n")
+			html.add("			'size': 8\n")
+			html.add("		}\n")
+			html.add("	},\n")
+			html.add("	'misc': {\n")
+			html.add("		'colors': {\n")
+			html.add("			'segmentStroke': '#000000'\n")
+			html.add("		}\n")
+			html.add("	}\n")
+			html.add("});\n")
+			html.add("</script>\n")
+
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes(html.end(), "utf8"))
+		return
+
 
 	def do_GET(self):
 		print(self.path)
@@ -1180,6 +1289,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 			if opts["mode"] == "hosts":
 				self.show_hosts()
+			elif opts["mode"] == "stats":
+				self.show_stats()
 			else:
 				self.show_graph(opts["mode"])
 

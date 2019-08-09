@@ -14,31 +14,76 @@ from VisGraph import *
 
 
 
-
 groups = {}
 ipv4_ips = {}
 
+osicons = {
+	"Debian": "debian",
+	"RedHat": "hat-fedora",
+	"FreeBSD": "freebsd",
+	"Suse": "opensuse",
+	"LibreELEC": "youtube-tv",
+}
+
+
+def osicons_get(osfamily, distribution = ""):
+	if osfamily in osicons:
+		return osicons[osfamily]
+	elif distribution in osicons:
+		return osicons[distribution]
+	else:
+		return "monitor"
+
+
+def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
+	html = ""
+	if options == "":
+		options = []
+		for option in facts:
+			options.append(option)
+	if type(units) is str:
+		unit = units
+		units = []
+		for option in options:
+			units.append(unit)
+	un = 0
+	for option in options:
+		if option.endswith("_mb"):
+			title = option.replace("ansible_", "").replace("_mb", "").replace("_", " ").capitalize()
+		elif option.endswith("_g"):
+			title = option.replace("ansible_", "").replace("_g", "").replace("_", " ").capitalize()
+		else:
+			title = option.replace("ansible_", "").replace("_", " ").capitalize()
+		if option in facts:
+			value = str(facts[option])
+			html += "<tr><td>" + offset + title + ": </td><td align='" + align + "'>"
+			if option.endswith("_mb"):
+				html += value + " MB"
+			elif option.endswith("_g"):
+				html += value + " GB"
+			else:
+				html += value + " " + units[un]
+			html += "</td></tr>\n"
+		un += 1
+	return html
+	
+
 
 class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
-
 	color_n = 0
 	colors = ["#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]
-
 
 	def show_graph(self, mode = "group"):
 		if mode == "":
 			mode = group
-
-		html = HtmlPage("Visansible", "Graph(" + mode + ")");
-		graph = VisGraph()
-
+		html = HtmlPage("Visansible", "Graph (" + mode + ")");
+		graph = VisGraph("visgraph", "800px")
 		self.color_n = 0
 		for group in groups:
 			for host in groups[group]["hosts"]:
 				if "ansible_facts" in groups[group]["hosts"][host]:
 					if mode == "network":
 						self.show_host_graph_network_pre(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-
 		for group in groups:
 			if mode == "group":
 				graph.node_add("all", "all", "cloud")
@@ -53,14 +98,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
 					productname = groups[group]["hosts"][host]["ansible_facts"]["ansible_product_name"]
 					architecture = groups[group]["hosts"][host]["ansible_facts"]["ansible_architecture"]
-					if osfamily == "Debian":
-						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "debian", "font: {color: '#0000FF'}")
-					elif osfamily == "RedHat":
-						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "hat-fedora", "font: {color: '#0000FF'}")
-					elif distribution == "FreeBSD":
-						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "freebsd", "font: {color: '#0000FF'}")
-					else:
-						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "monitor", "font: {color: '#0000FF'}")
+					graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
 					if mode == "network":
 						self.show_host_graph_network(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host, True)
 				elif "msg" in groups[group]["hosts"][host]:
@@ -69,18 +107,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					graph.node_add("host_" + host, host + "\\nUnknown-Error", "monitor", "font: {color: '#FF0000'}")
 					print(json.dumps(groups[group]["hosts"][host], indent=4, sort_keys=True));
 		html.add(graph.end())
-
-#		for group in groups:
-#			html.add(group + "<br />")
-#			for host in groups[group]["hosts"]:
-#				html.add("<hr />\n")
-#				html.add("&nbsp;" + host + "<br />\n")
-#				if "ansible_facts" in groups[group]["hosts"][host]:
-#					html.add(self.show_element(groups[group]["hosts"][host]["ansible_facts"], "&nbsp;&nbsp;"))
-#				else:
-#					html.add("ERROR: " + host + "<br />\n")
-
-
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -150,7 +176,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 									graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
 									## show ipv4-network ##
 									graph.node_add("network_" + network, network, "net");
-
 									## default route ##
 									if gateway_interface == device:
 										if gateway_address in ipv4_ips:
@@ -160,7 +185,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 											self.color_n = self.color_n + 1
 									else:
 										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
-
 									## show ipv4-gateway ##
 									if gateway_interface == device:
 										if gateway_address not in ipv4_ips:
@@ -204,7 +228,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										self.color_n = self.color_n + 1
 								else:
 									graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
-
 								## show ipv4-gateway ##
 								if gateway_interface == device:
 									if gateway_address not in ipv4_ips:
@@ -214,7 +237,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										graph.edge_add("gateway_" + gateway_address, "cloud")
 									else:
 										graph.edge_add("network_" + network, ipv4_ips[gateway_address][0], "color: { color: '" + ipv4_ips[gateway_address][0] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
-
 				if simple == False:
 					if "ipv6" in facts[part]:
 						for ipv6 in facts[part]["ipv6"]:
@@ -228,7 +250,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								## show ipv6 ##
 								graph.node_add(parentnode + "_ipv6_" + address, address + "\\n" + prefix + "\\n" + scope, "ipv6")
 								graph.edge_add(parentnode + "_iface_" + device, parentnode + "_ipv6_" + address)
-
 				if simple == False:
 					if "interfaces" in facts[part] and len(facts[part]["interfaces"]) > 0:
 						for interface in facts[part]["interfaces"]:
@@ -237,11 +258,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						graph.edge_add(parentnode, parentnode + "_iface_" + device)
 
 
-
 	def show_host_graph_disks(self, graph, facts, parentnode):
 		if "ansible_devices" not in facts:
 			return
-
 		vg2pv = {}
 		if "ansible_lvm" in facts:
 			if "pvs" in facts["ansible_lvm"]:
@@ -250,14 +269,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					vg2pv[vg] = pv
 					graph.node_add(parentnode + "_pvs_" + pv, "LVM-PV\\n" + pv, "harddisk")
 					graph.edge_add(parentnode + "_partition_" + pv.replace("/dev/", ""), parentnode + "_pvs_" + pv)
-
 			if "vgs" in facts["ansible_lvm"]:
 				for vg in facts["ansible_lvm"]["vgs"]:
 					graph.node_add(parentnode + "_vgs_" + vg, "LVM-VG\\n" + vg, "group")
 					if vg in vg2pv:
 						pv = vg2pv[vg]
 						graph.edge_add(parentnode + "_pvs_" + pv, parentnode + "_vgs_" + vg)
-
 			if "lvs" in facts["ansible_lvm"]:
 				for lv in facts["ansible_lvm"]["lvs"]:
 					print(lv)
@@ -265,18 +282,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					lv_device = "/dev/mapper/" + vg + "-" + lv
 					graph.node_add(parentnode + "_lvs_" + lv, "LVM-LV\\n" + lv, "partition")
 					graph.edge_add(parentnode + "_vgs_" + vg, parentnode + "_lvs_" + lv)
-
 					## show disk-mounts ##
 					for mount in facts["ansible_mounts"]:
 						if mount["device"] == lv_device:
 							graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
 							graph.edge_add(parentnode + "_lvs_" + lv, parentnode + "_mount_" + mount["mount"])
-
-
-
 		if type(facts["ansible_devices"]) is list:
 			return
-
 		for device in facts["ansible_devices"]:
 			if type(facts["ansible_devices"][device]) is list:
 				if device.startswith("cd"):
@@ -292,14 +304,11 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if mount["device"] == "/dev/" + partition:
 							graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
 							graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
-
 				## show disk-mounts ##
 				for mount in facts["ansible_mounts"]:
 					if mount["device"] == "/dev/" + device:
 						graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
 						graph.edge_add(parentnode + "_disk_" + device, parentnode + "_mount_" + mount["mount"])
-
-
 			if "partitions" in facts["ansible_devices"][device]:
 				if not device.startswith("loops") and (len(vg2pv) == 0 or not device.startswith("dm-") ):
 					## show host controller ##
@@ -308,18 +317,15 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						hostctrl = "software"
 					graph.node_add(parentnode + "_hostctrl_" + hostctrl, hostctrl.replace(":", "\\n"), "scsi")
 					graph.edge_add(parentnode, parentnode + "_hostctrl_" + hostctrl)
-
 					## show disk ##
 					vendor = str(facts["ansible_devices"][device]["vendor"])
 					model = str(facts["ansible_devices"][device]["model"])
 					size = facts["ansible_devices"][device]["size"]
 					if size != "0.00 Bytes":
-
 						if "model" in facts["ansible_devices"][device] and ("DVD" in str(facts["ansible_devices"][device]["model"]) or "CD" in str(facts["ansible_devices"][device]["model"])):
 							graph.node_add(parentnode + "_disk_" + device, device + "\\n" + vendor + "\\n" + model + "\\n" + size, "disk-player")
 						else:
 							graph.node_add(parentnode + "_disk_" + device, device + "\\n" + vendor + "\\n" + model + "\\n" + size, "harddisk")
-
 						## check if device is slave of another disk ##
 						is_slave = False
 						for device2 in facts["ansible_devices"]:
@@ -361,8 +367,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										graph.edge_add(parentnode + "_disk_" + device, parentnode + "_mount_" + mount["mount"])
 
 
-
-
 	def show_hostgraph(self, hostname, mode = "network"):
 		html = HtmlPage("Visansible", "Hostgraph");
 		graph = VisGraph()
@@ -382,25 +386,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					elif mode == "all":
 						self.show_host_graph_disks(graph, facts, "host_" + host)
 						self.show_host_graph_network(graph, facts, "host_" + host)
-		html.add(graph.end(direction = "UD"))
-
-		for group in groups:
-			html.add(group + "<br />")
-			for host in groups[group]["hosts"]:
-				html.add("<hr />\n")
-				html.add("&nbsp;" + host + "<br />\n")
-				if "ansible_facts" in groups[group]["hosts"][host]:
-					html.add(self.show_element(groups[group]["hosts"][host]["ansible_facts"], "&nbsp;&nbsp;"))
-				else:
-					html.add("ERROR: " + host + "<br />\n")
-
-
+		html.add(graph.end())
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
 		self.wfile.write(bytes(html.end(), "utf8"))
 		return
-
 
 
 	def show_host_table_ifaces(self, facts):
@@ -416,21 +407,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html += "<div class='card-header'>Network-Interface: " + facts[part]["device"] + "<img class='float-right' src='assets/MaterialDesignIcons/port.svg'></div>\n"
 				html += "<div class='card-body'>\n"
 				html += "<div class='row'>\n"
-
 				html += "<div class='col-6'>\n"
 				html += "<b>Interface:</b>\n"
 				html += "<table>\n"
-				for option in ["device", "model", "macaddress", "mtu", "promisc", "type", "active"]:
-					title = option.replace("ansible_", "").capitalize()
-					if option in facts[part]:
-						value = str(facts[part][option])
-						html += "<tr>\n"
-						html += " <td>" + title + ": </td>\n"
-						html += " <td>" + value + "</td>\n"
-						html += "</tr>\n"
+				html += facts2rows(facts[part], ["device", "model", "macaddress", "mtu", "promisc", "type", "active"])
 				html += "</table>\n"
 				html += "</div>\n"
-
 				html += "<div class='col-6'>\n"
 				if "ipv4" in facts[part]:
 					if type(facts[part]["ipv4"]) == list:
@@ -438,69 +420,41 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							fact = ipv4
 							html += "<b>IPv4:</b>\n"
 							html += "<table>\n"
-							for option in ["address", "netmask", "broadcast", "network"]:
-								title = option.replace("ansible_", "").capitalize()
-								if option in ipv4:
-									value = str(ipv4[option])
-									html += "<tr>\n"
-									html += " <td>" + title + ": </td>\n"
-									html += " <td>" + value + "</td>\n"
-									html += "</tr>\n"
+							html += facts2rows(ipv4, ["address", "netmask", "broadcast", "network"])
 							html += "</table>\n"
 							html += "<br />\n"
 					else:
 						html += "<b>IPv4:</b>\n"
 						html += "<table>\n"
-						for option in ["address", "netmask", "broadcast", "network"]:
-							title = option.replace("ansible_", "").capitalize()
-							if option in facts[part]["ipv4"]:
-								value = str(facts[part]["ipv4"][option])
-								html += "<tr>\n"
-								html += " <td>" + title + ": </td>\n"
-								html += " <td>" + value + "</td>\n"
-								html += "</tr>\n"
+						html += facts2rows(facts[part]["ipv4"], ["address", "netmask", "broadcast", "network"])
 						html += "</table>\n"
 						html += "<br />\n"
 				if "ipv6" in facts[part]:
 					for ipv6 in facts[part]["ipv6"]:
 						html += "<b>IPv6:</b>\n"
 						html += "<table>\n"
-						for option in ["address", "prefix", "scope"]:
-							title = option.replace("ansible_", "").capitalize()
-							if option in ipv6:
-								value = str(ipv6[option])
-								html += "<tr>\n"
-								html += " <td>" + title + ": </td>\n"
-								html += " <td>" + value + "</td>\n"
-								html += "</tr>\n"
+						html += facts2rows(ipv6, ["address", "prefix", "scope"])
 						html += "</table>\n"
 						html += "<br />\n"
 				html += "</div>\n"
-
 				html += "</div>\n"
 				html += "</div>\n"
 				html += "</div>\n"
 				html += "</div>\n"
-
-
 		return html
-
 
 
 	def show_host_table_disks(self, facts):
 		html = ""
 		if "ansible_devices" not in facts:
 			return html
-
 		dms = {}
 		if "ansible_lvm" in facts:
 			if "vgs" in facts["ansible_lvm"]:
 				for vg in facts["ansible_lvm"]["vgs"]:
 					dms[0] = 0
-
 		if type(facts["ansible_devices"]) is list:
 			return html
-
 		for device in facts["ansible_devices"]:
 			if type(facts["ansible_devices"][device]) is list:
 				html += "<div class='col-6'>\n"
@@ -508,30 +462,17 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html += "<div class='card-header'>Disk: " + device + "<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n"
 				html += "<div class='card-body'>\n"
 				html += "<div class='row'>\n"
-
 				## show disk ##
 				html += "<div class='col-6'>\n"
 				html += "<b>Disk: " + device + "</b>\n"
 				html += "<table>\n"
-
 				## show disk-mounts ##
 				for mount in facts["ansible_mounts"]:
 					if mount["device"] == "/dev/" + device:
-						for option in ["mount", "fstype", "device", "size_available", "uuid"]:
-							title = option.replace("ansible_", "").capitalize()
-							if option in mount:
-								value = str(mount[option])
-								html += "<tr>\n"
-								html += " <td>&nbsp;&nbsp;&nbsp;" + title + ": </td>\n"
-								html += " <td>" + value + "</td>\n"
-								html += "</tr>\n"
+						html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"])
 						html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
-
-
 				html += "</table>\n"
 				html += "</div>\n"
-
-
 				## show partitions ##
 				html += "<div class='col-6'>\n"
 				for partition in facts["ansible_devices"][device]:
@@ -540,30 +481,16 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					## show mounts ##
 					for mount in facts["ansible_mounts"]:
 						if mount["device"] == "/dev/" + partition:
-							for option in ["mount", "fstype", "device", "size_available", "uuid"]:
-								title = option.replace("ansible_", "").capitalize()
-								if option in mount:
-									value = str(mount[option])
-									html += "<tr>\n"
-									html += " <td>&nbsp;&nbsp;&nbsp;" + title + ": </td>\n"
-									html += " <td>" + value + "</td>\n"
-									html += "</tr>\n"
+							html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"])
 							html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 					html += "</table>\n"
 					html += "<br />\n"
 				html += "</div>\n"
-
 				html += "</div>\n"
 				html += "</div>\n"
 				html += "</div>\n"
 				html += "</div>\n"
-
-
-
-
-
 			if "partitions" in facts["ansible_devices"][device]:
-
 				if facts["ansible_devices"][device]["size"] != "0.00 Bytes" and (len(dms) == 0 or not device.startswith("dm-") ):
 					html += "<div class='col-6'>\n"
 					html += "<div class='card'>\n"
@@ -573,33 +500,17 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						html += "<div class='card-header'>Disk: " + device + "<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n"
 					html += "<div class='card-body'>\n"
 					html += "<div class='row'>\n"
-
 					## show disk ##
 					html += "<div class='col-6'>\n"
 					html += "<b>Disk:</b>\n"
 					html += "<table>\n"
-					for option in ["host", "vendor", "model", "serial", "size"]:
-						title = option.replace("ansible_", "").capitalize()
-						if option in facts["ansible_devices"][device]:
-							value = str(facts["ansible_devices"][device][option])
-							html += "<tr>\n"
-							html += " <td>" + title + ": </td>\n"
-							html += " <td>" + value + "</td>\n"
-							html += "</tr>\n"
-
+					html += facts2rows(facts["ansible_devices"][device], ["host", "vendor", "model", "serial", "size"])
 					## show disk-mounts ##
 					for mount in facts["ansible_mounts"]:
 						if "links" in facts["ansible_devices"][device] and "uuids" in facts["ansible_devices"][device]["links"]:
 							for disk_uuid in facts["ansible_devices"][device]["links"]["uuids"]:
 								if mount["uuid"] == disk_uuid:
-									for option in ["mount", "fstype", "device", "size_available", "uuid"]:
-										title = option.replace("ansible_", "").capitalize()
-										if option in mount:
-											value = str(mount[option])
-											html += "<tr>\n"
-											html += " <td>&nbsp;&nbsp;&nbsp;" + title + ": </td>\n"
-											html += " <td>" + value + "</td>\n"
-											html += "</tr>\n"
+									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"])
 									html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 
 					## check if device is slave of another disk ##
@@ -623,7 +534,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 											html += " <td>Master: </td>\n"
 											html += " <td>" + partition2 + "</td>\n"
 											html += "</tr>\n"
-
 					## show disk slaves ##
 					if "links" in facts["ansible_devices"][device] and "masters" in facts["ansible_devices"][device]["links"]:
 						for master in facts["ansible_devices"][device]["links"]["masters"]:
@@ -631,27 +541,15 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							html += " <td>Slave-Device: </td>\n"
 							html += " <td>" + master + "</td>\n"
 							html += "</tr>\n"
-
 					html += "</table>\n"
 					html += "</div>\n"
-
-
 					## show partitions ##
 					html += "<div class='col-6'>\n"
 					for partition in facts["ansible_devices"][device]["partitions"]:
 						html += "<b>Partition: " + partition + "</b>\n"
 						html += "<table>\n"
 						## show partition ##
-						for option in ["uuid", "size", "start", "sectors", "sectorsize", ""]:
-						#for option in facts["ansible_devices"][device]["partitions"][partition]:
-							title = option.replace("ansible_", "").capitalize()
-							if option in facts["ansible_devices"][device]["partitions"][partition]:
-								value = str(facts["ansible_devices"][device]["partitions"][partition][option])
-								html += "<tr>\n"
-								html += " <td>" + title + ": </td>\n"
-								html += " <td>" + value + "</td>\n"
-								html += "</tr>\n"
-
+						html += facts2rows(facts["ansible_devices"][device]["partitions"][partition], ["uuid", "size", "start", "sectors", "sectorsize"])
 						## show partition slaves ##
 						if "links" in facts["ansible_devices"][device]["partitions"][partition] and "masters" in facts["ansible_devices"][device]["partitions"][partition]["links"]:
 							for master in facts["ansible_devices"][device]["partitions"][partition]["links"]["masters"]:
@@ -659,29 +557,18 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								html += " <td>Slave-Device: </td>\n"
 								html += " <td>" + master + "</td>\n"
 								html += "</tr>\n"
-
 						## show mounts ##
 						for mount in facts["ansible_mounts"]:
 							if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
-								for option in ["mount", "fstype", "device", "size_available", "uuid"]:
-									title = option.replace("ansible_", "").capitalize()
-									if option in mount:
-										value = str(mount[option])
-										html += "<tr>\n"
-										html += " <td>&nbsp;&nbsp;&nbsp;" + title + ": </td>\n"
-										html += " <td>" + value + "</td>\n"
-										html += "</tr>\n"
+								html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"], "&nbsp;&nbsp;&nbsp;")
 								html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 						html += "</table>\n"
 						html += "<br />\n"
 					html += "</div>\n"
-
 					html += "</div>\n"
 					html += "</div>\n"
 					html += "</div>\n"
 					html += "</div>\n"
-
-
 		if "ansible_lvm" in facts:
 			if "vgs" in facts["ansible_lvm"]:
 				for vg in facts["ansible_lvm"]["vgs"]:
@@ -691,18 +578,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += "<div class='card-header'>LVM_VG: " + vg + "<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n"
 					html += "<div class='card-body'>\n"
 					html += "<div class='row'>\n"
-
 					html += "<div class='col-6'>\n"
 					html += "<b>VG:</b>\n"
 					html += "<table>\n"
-					for option in ["size_g", "free_g", "num_lvs", "num_pvs"]:
-						title = option.replace("ansible_", "").capitalize()
-						if option in facts["ansible_lvm"]["vgs"][vg]:
-							value = str(facts["ansible_lvm"]["vgs"][vg][option])
-							html += "<tr>\n"
-							html += " <td>" + title + ": </td>\n"
-							html += " <td>" + value + "</td>\n"
-							html += "</tr>\n"
+					html += facts2rows(facts["ansible_lvm"]["vgs"][vg], ["size_g", "free_g", "num_lvs", "num_pvs"])
 					if "pvs" in facts["ansible_lvm"]:
 						for pv in facts["ansible_lvm"]["pvs"]:
 							pv_vg = facts["ansible_lvm"]["pvs"][pv]["vg"]
@@ -711,18 +590,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								html += " <td>&nbsp;&nbsp;&nbsp;PV: </td>\n"
 								html += " <td>" + pv + "</td>\n"
 								html += "</tr>\n"
-								for option in ["size_g", "free_g"]:
-									title = option.replace("ansible_", "").capitalize()
-									if option in facts["ansible_lvm"]["pvs"][pv]:
-										value = str(facts["ansible_lvm"]["pvs"][pv][option])
-										html += "<tr>\n"
-										html += " <td>&nbsp;&nbsp;&nbsp;" + title + ": </td>\n"
-										html += " <td>" + value + "</td>\n"
-										html += "</tr>\n"
+								html += facts2rows(facts["ansible_lvm"]["pvs"][pv], ["size_g", "free_g"], "&nbsp;&nbsp;&nbsp;")
 								html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 					html += "</table>\n"
 					html += "</div>\n"
-
 					html += "<div class='col-6'>\n"
 					if "lvs" in facts["ansible_lvm"]:
 						for lv in facts["ansible_lvm"]["lvs"]:
@@ -731,39 +602,19 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								lv_device = "/dev/mapper/" + vg + "-" + lv
 								html += "<b>LV: " + lv + "</b>\n"
 								html += "<table>\n"
-								for option in ["size_g"]:
-									title = option.replace("ansible_", "").capitalize()
-									if option in facts["ansible_lvm"]["lvs"][lv]:
-										value = str(facts["ansible_lvm"]["lvs"][lv][option])
-										html += "<tr>\n"
-										html += " <td>" + title + ": </td>\n"
-										html += " <td>" + value + "</td>\n"
-										html += "</tr>\n"
+								html += facts2rows(facts["ansible_lvm"]["lvs"][lv], ["size_g"])
 								## show mounts ##
 								for mount in facts["ansible_mounts"]:
 									if mount["device"] == lv_device:
-										for option in ["mount", "fstype", "device", "size_available", "uuid"]:
-											title = option.replace("ansible_", "").capitalize()
-											if option in mount:
-												value = str(mount[option])
-												html += "<tr>\n"
-												html += " <td>&nbsp;&nbsp;&nbsp;" + title + ": </td>\n"
-												html += " <td>" + value + "</td>\n"
-												html += "</tr>\n"
+										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"], "&nbsp;&nbsp;&nbsp;")
 										html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 								html += "</table>\n"
 								html += "<br />\n"
 					html += "</div>\n"
-
 					html += "</div>\n"
 					html += "</div>\n"
 					html += "</div>\n"
 					html += "</div>\n"
-
-
-
-
-
 		return html
 
 
@@ -771,54 +622,26 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		html = ""
 		html += "<div class='col-6'>\n"
 		html += "<div class='card'>\n"
-
 		osfamily = facts["ansible_os_family"]
 		distribution = facts["ansible_distribution"]
-		if osfamily == "Debian":
-			html += "<div class='card-header'>General<img class='float-right' src='assets/MaterialDesignIcons/debian.svg'></div>\n"
-		elif osfamily == "RedHat":
-			html += "<div class='card-header'>General<img class='float-right' src='assets/MaterialDesignIcons/hat-fedora.svg'></div>\n"
-		elif distribution == "FreeBSD":
-			html += "<div class='card-header'>General<img class='float-right' src='assets/MaterialDesignIcons/freebsd.svg'></div>\n"
-		else:
-			html += "<div class='card-header'>General<img class='float-right' src='assets/MaterialDesignIcons/monitor.svg'></div>\n"
-
+		html += "<div class='card-header'>General<img class='float-right' src='assets/MaterialDesignIcons/" + osicons_get(osfamily, distribution) + ".svg'></div>\n"
 		html += "<div class='card-body'>\n"
 		html += "<div class='row'>\n"
-
 		html += "<div class='col-6'>\n"
 		html += "<table>\n"
-		for option in ["ansible_fqdn", "ansible_system_vendor", "ansible_product_name", "ansible_product_serial", "ansible_architecture", "ansible_memtotal_mb", "ansible_virtualization_role", "ansible_virtualization_type"]:
-			title = option.replace("ansible_", "").capitalize()
-			if option in facts:
-				value = str(facts[option])
-				html += "<tr>\n"
-				html += " <td>" + title + ": </td>\n"
-				html += " <td>" + value + "</td>\n"
-				html += "</tr>\n"
+		html += facts2rows(facts, ["ansible_fqdn", "ansible_system_vendor", "ansible_product_name", "ansible_product_serial", "ansible_architecture", "ansible_memtotal_mb", "ansible_virtualization_role", "ansible_virtualization_type"])
 		html += "</table>\n"
 		html += "</div>\n"
-
 		html += "<div class='col-6'>\n"
 		html += "<table>\n"
-		for option in ["ansible_distribution", "ansible_distribution_major_version", "ansible_distribution_release", "ansible_distribution_version", "ansible_distribution_file_variety", "ansible_userspace_architecture", "ansible_kernel"]:
-			title = option.replace("ansible_", "").capitalize()
-			if option in facts:
-				value = str(facts[option])
-				html += "<tr>\n"
-				html += " <td>" + title + ": </td>\n"
-				html += " <td>" + value + "</td>\n"
-				html += "</tr>\n"
+		html += facts2rows(facts, ["ansible_distribution", "ansible_distribution_major_version", "ansible_distribution_release", "ansible_distribution_version", "ansible_distribution_file_variety", "ansible_userspace_architecture", "ansible_kernel", "ansible_pkg_mgr"])
 		html += "</table>\n"
 		html += "</div>\n"
-
-
 		html += "</div>\n"
 		html += "</div>\n"
 		html += "</div>\n"
 		html += "</div>\n"
 		return html
-
 
 
 	def show_host_table_memory(self, facts):
@@ -834,14 +657,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += "<div class='col-4'>\n"
 					html += "<b>" + section.capitalize() + ":</b><br />\n"
 					html += "<table>\n"
-					for option in facts["ansible_memory_mb"][section]:
-						title = option.replace("ansible_", "").capitalize()
-						if option in facts["ansible_memory_mb"][section]:
-							value = str(facts["ansible_memory_mb"][section][option])
-							html += "<tr>\n"
-							html += " <td>" + title + ": </td>\n"
-							html += " <td>" + value + " MB</td>\n"
-							html += "</tr>\n"
+					html += facts2rows(facts["ansible_memory_mb"][section], "", "", "MB", "right")
 					html += "</table>\n"
 					html += "</div>\n"
 			html += "</div>\n"
@@ -851,8 +667,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return html
 
 
-
-
 	def show_host_table_network(self, facts):
 		html = ""
 		html += "<div class='col-6'>\n"
@@ -860,29 +674,21 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		html += "<div class='card-header'>Network<img class='float-right' src='assets/MaterialDesignIcons/net.svg'></div>\n"
 		html += "<div class='card-body'>\n"
 		html += "<div class='row'>\n"
-
 		html += "<div class='col-6'>\n"
 		html += "<b>Hostname & Domain:</b><br />\n"
 		html += "<table>\n"
-		for option in ["ansible_hostname", "ansible_domain", "ansible_fqdn"]:
-			title = option.replace("ansible_", "").capitalize()
-			if option in facts:
-				value = str(facts[option])
-				html += "<tr>\n"
-				html += " <td>" + title + ": </td>\n"
-				html += " <td>" + value + "</td>\n"
-				html += "</tr>\n"
+		html += facts2rows(facts, ["ansible_hostname", "ansible_domain", "ansible_fqdn"])
 		html += "</table>\n"
 		html += "</div>\n"
-
 		html += "<div class='col-6'>\n"
 		html += "<b>DNS-Server:</b><br />\n"
 		html += "<table>\n"
-		for nameserver in facts["ansible_dns"]["nameservers"]:
-			html += "<tr>\n"
-			html += " <td>DNS-Server: </td>\n"
-			html += " <td>" + nameserver + "</td>\n"
-			html += "</tr>\n"
+		if "nameservers" in facts["ansible_dns"]:
+			for nameserver in facts["ansible_dns"]["nameservers"]:
+				html += "<tr>\n"
+				html += " <td>DNS-Server: </td>\n"
+				html += " <td>" + nameserver + "</td>\n"
+				html += "</tr>\n"
 		if "search" in facts["ansible_dns"]:
 			for search in facts["ansible_dns"]["search"]:
 				html += "<tr>\n"
@@ -893,18 +699,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		html += "<br />\n"
 		html += "<b>Default-Gateway:</b><br />\n"
 		html += "<table>\n"
-		for option in ["gateway", "interface"]:
-			title = option.replace("ansible_", "").capitalize()
-			if "ansible_default_ipv4" in facts:
-				if option in facts["ansible_default_ipv4"]:
-					value = str(facts["ansible_default_ipv4"][option])
-					html += "<tr>\n"
-					html += " <td>" + title + ": </td>\n"
-					html += " <td>" + value + "</td>\n"
-					html += "</tr>\n"
+		if "ansible_default_ipv4" in facts:
+			html += facts2rows(facts["ansible_default_ipv4"], ["gateway", "interface"])
 		html += "</table>\n"
 		html += "</div>\n"
-
 		html += "</div>\n"
 		html += "</div>\n"
 		html += "</div>\n"
@@ -920,22 +718,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		html += "<div class='card-header'>Processors<img class='float-right' src='assets/MaterialDesignIcons/chip.svg'></div>\n"
 		html += "<div class='card-body'>\n"
 		html += "<div class='row'>\n"
-
-
 		html += "<div class='col-6'>\n"
 		html += "<b>CPUs/Cores/Threads:</b><br />\n"
 		html += "<table>\n"
-		for option in ["ansible_processor_count", "ansible_processor_cores", "ansible_processor_threads_per_core", "ansible_processor_vcpus"]:
-			title = option.replace("ansible_", "").capitalize()
-			if option in facts:
-				value = str(facts[option])
-				html += "<tr>\n"
-				html += " <td>" + title + ": </td>\n"
-				html += " <td>" + value + "</td>\n"
-				html += "</tr>\n"
+		html += facts2rows(facts, ["ansible_processor_count", "ansible_processor_cores", "ansible_processor_threads_per_core", "ansible_processor_vcpus"], "", "", "right")
 		html += "</table>\n"
 		html += "</div>\n"
-
 		html += "<div class='col-6'>\n"
 		html += "<b>Types:</b><br />\n"
 		html += "<table>\n"
@@ -956,7 +744,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html += "</tr>\n"
 		html += "</table>\n"
 		html += "</div>\n"
-
 		html += "</div>\n"
 		html += "</div>\n"
 		html += "</div>\n"
@@ -964,33 +751,21 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return html
 
 
-
-
 	def show_hostdata(self, hostname):
-		html = HtmlPage("Visansible", "Hostdata");
+		html = HtmlPage("Visansible", "Hostdata (" + hostname + ")");
 		for group in groups:
 			for host in groups[group]["hosts"]:
 				if hostname == host:
-					
 					if "ansible_facts" in groups[group]["hosts"][host]:
 						osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
 						distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
-						if osfamily == "Debian":
-							icon = "debian"
-						elif osfamily == "RedHat":
-							icon = "hat-fedora"
-						elif distribution == "FreeBSD":
-							icon = "freebsd"
-						else:
-							icon = "monitor"
-
+						icon = osicons_get(osfamily, distribution)
 						html.add(" <div class='row'>\n")
 						html.add(self.show_host_table_general(groups[group]["hosts"][host]["ansible_facts"]))
 						html.add(self.show_host_table_processors(groups[group]["hosts"][host]["ansible_facts"]))
 						html.add(self.show_host_table_memory(groups[group]["hosts"][host]["ansible_facts"]))
 						html.add(self.show_host_table_network(groups[group]["hosts"][host]["ansible_facts"]))
 						html.add(" </div>\n")
-
 						html.add(" <div class='row'>\n")
 						html.add(self.show_host_table_ifaces(groups[group]["hosts"][host]["ansible_facts"]))
 						html.add("  <div class='col-12'>\n")
@@ -1005,7 +780,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						html.add("   </div>\n")
 						html.add("  </div>\n")
 						html.add(" </div>\n")
-
 						html.add(" <div class='row'>\n")
 						html.add(self.show_host_table_disks(groups[group]["hosts"][host]["ansible_facts"]))
 						html.add("  <div class='col-12'>\n")
@@ -1025,7 +799,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							html.add(" <b>" + groups[group]["hosts"][host]["msg"].strip() + "</b>\n")
 						else:
 							html.add(" <b>UNKNOWN-ERROR</b>\n")
-
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -1061,53 +834,54 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							html.add("<td width='10%'>")
 							osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
 							distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
-							if osfamily == "Debian":
-								html.add("<img src='assets/MaterialDesignIcons/debian.svg' />\n")
-							elif osfamily == "RedHat":
-								html.add("<img src='assets/MaterialDesignIcons/hat-fedora.svg' />\n")
-							elif distribution == "FreeBSD":
-								html.add("<img src='assets/MaterialDesignIcons/freebsd.svg' />\n")
-							else:
-								html.add("<img src='assets/MaterialDesignIcons/monitor.svg' />\n")
+							html.add("<img src='assets/MaterialDesignIcons/" + osicons_get(osfamily, distribution) + ".svg' />\n")
 						else:
 							html.add("<td>")
 						html.add(value)
 						html.add("</td>\n")
 					else:
 						html.add(" <td>---</td>\n")
-
 				if "options" in groups[group]["hosts"][host]:
 					html.add(" <td>" + ", ".join(groups[group]["hosts"][host]["options"]) + "</td>\n")
 				else:
 					html.add(" <td>---</td>\n")
-
 				if "msg" in groups[group]["hosts"][host]:
 					html.add(" <td>" + groups[group]["hosts"][host]["msg"].strip() + "</td>\n")
 				elif "ansible_facts" in groups[group]["hosts"][host]:
 					html.add(" <td>OK</td>\n")
 				else:
 					html.add(" <td>UNKNOWN-ERROR</td>\n")
-
 				html.add("</tr>\n")
 		html.add("</table>\n")
 		html.add("<br />\n")
-
-
-
 		html.add("  </div>\n")
 		html.add(" </div>\n")
-
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
 		self.wfile.write(bytes(html.end(), "utf8"))
 		return
 
+
+	def show_inventory(self):
+		html = HtmlPage("Visansible", "Inventory-File");
+		html.add("<div class='row'>\n")
+		html.add("<div class='col-12'>\n")
+		inventory = open("inventory.cfg", "r").read()
+		html.add("<pre>" + inventory + "</pre>\n")
+		html.add("</div>\n")
+		html.add("</div>\n")
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes(html.end(), "utf8"))
+		return
+
+
 	def show_stats(self):
 		colors = ["#cb2121", "#830909", "#923e99", "#ae83d5", "#111111", "#050505", "#646464", "#747474", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888", "#999999", "#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]
-		options = ["ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_distribution", "ansible_kernel", "ansible_processor_count", "ansible_distribution_release", "ansible_virtualization_role", "ansible_virtualization_type"]
+		options = ["ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_distribution", "ansible_kernel", "ansible_processor_count", "ansible_distribution_release", "ansible_virtualization_role", "ansible_virtualization_type", "ansible_pkg_mgr"]
 		html = HtmlPage("Visansible", "Stats");
-
 		stats = {}
 		for option in options:
 			stats[option] = {}
@@ -1118,14 +892,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					if value not in stats[option]:
 						stats[option][value] = 0
 					stats[option][value] += 1
-
 		html.add("<div class='row'>\n")
 		for option in options:
 			html.add("<div class='col-4'>\n")
 			html.add("<div id='pieChart_" + option + "'></div>\n")
 			html.add("</div>\n")
 		html.add("</div>\n")
-
 		for option in options:
 			html.add("<script>\n")
 			html.add("var pie = new d3pie('pieChart_" + option + "', {\n")
@@ -1205,7 +977,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add("	}\n")
 			html.add("});\n")
 			html.add("</script>\n")
-
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -1233,6 +1004,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html.add("<pre>")
 				html.add(result.stdout.decode('utf-8'))
 				html.add("</pre>")
+			inventory_read()
 			self.send_response(200)
 			self.send_header("Content-type", "text/html")
 			self.end_headers()
@@ -1268,8 +1040,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					self.send_header("Content-type", "text/plain")
 					self.end_headers()
 					self.wfile.write(bytes("file not found: " + self.path, "utf8"))
-
-
 		elif self.path.startswith("/?host="):
 			opts = {}
 			opts["mode"] = "network"
@@ -1277,32 +1047,29 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				name = opt.split("=")[0]
 				value = opt.split("=")[1]
 				opts[name] = value
-#			self.show_hostgraph(opts["host"], opts["mode"])
+#			self.show_hostgraph(opts["host"], "all")
 			self.show_hostdata(opts["host"])
-
 		elif self.path.startswith("/?mode="):
 			opts = {}
 			for opt in self.path.split("?")[1].split("&"):
 				name = opt.split("=")[0]
 				value = opt.split("=")[1]
 				opts[name] = value
-
 			if opts["mode"] == "hosts":
 				self.show_hosts()
 			elif opts["mode"] == "stats":
 				self.show_stats()
+			elif opts["mode"] == "inventory":
+				self.show_inventory()
 			else:
 				self.show_graph(opts["mode"])
-
 		else:
 			self.show_graph()
-
 		return
 
 
 	def show_element(self, element, prefix = ""):
 		html = ""
-
 		if type(element) is str:
 			html += prefix + str(element) + "<br />\n"
 		elif type(element) is int:
@@ -1335,12 +1102,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += "<br />\n"
 					html += prefix + "<b>" + part + ":</b><br />\n"
 					html += self.show_element(element[part], prefix + "&nbsp;&nbsp;&nbsp;")
-
-
-
 		return html;
-
-
 
 
 
@@ -1383,8 +1145,6 @@ def inventory_read():
 			groups[group]["hosts"][host]["options"] = host_options
 
 
-
-
 def run():
 	print('starting server...')
 	server_address = ('127.0.0.1', 8081)
@@ -1392,18 +1152,9 @@ def run():
 	print('running server...')
 	httpd.serve_forever()
 
-print(json.dumps(groups, indent=4, sort_keys=True))
 
-
-#inventory_read()
-#for group in groups:
-#	for host in groups[group]["hosts"]:
-#		os.system("ssh-keyscan " + host + " >> /root/.ssh/known_hosts")
-#os.system("ansible -i inventory.cfg all -m setup --tree facts")
 inventory_read()
-
-
-
+print(json.dumps(groups, indent=4))
 run()
 
 

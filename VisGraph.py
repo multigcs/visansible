@@ -5,11 +5,11 @@
 
 class VisGraph():
 
-	def __init__(self, name = "visjsgraph"):
+	def __init__(self, name = "visjsgraph", height = "640px"):
 		self.name = name
 		self.edges = []
 		self.html = ""
-		self.html += "<div id='" + self.name + "' style='height: 640px;'></div>\n"
+		self.html += "<div id='" + self.name + "' style='height: " + height + ";'></div>\n"
 		self.html += "<script>\n"
 		self.html += "  var nodes = new vis.DataSet([\n"
 

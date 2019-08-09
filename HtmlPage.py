@@ -25,10 +25,8 @@ class HtmlPage():
 		self.html += " <script type='text/javascript' src='assets/bootstrap/js/bootstrap.min.js'></script>\n"
 		self.html += " <script type='text/javascript' src='assets/d3/d3.min.js'></script>\n"
 		self.html += " <script type='text/javascript' src='assets/d3/d3pie.min.js'></script>\n"
-
 		self.html += "<style>\n"
 		self.html += """
-
 .main-content {
   padding-top: 15px;
   padding-bottom: 15px;
@@ -105,13 +103,9 @@ body {
 		self.html += " width: 100%;\n"
 		self.html += " align-items: stretch;\n"
 		self.html += "}\n"
-
 		self.html += "</style>\n"
-
 		self.html += "</head>\n"
-
 		self.html += "<body>\n"
-
 		self.html += """
   <div class="d-flex" id="wrapper">
     <div class="bg-light border-right" id="sidebar-wrapper">
@@ -121,6 +115,7 @@ body {
         <a href="/?mode=network" class="list-group-item list-group-item-action bg-light">Network</a>
         <a href="/?mode=hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
         <a href="/?mode=stats" class="list-group-item list-group-item-action bg-light">Stats</a>
+        <a href="/?mode=inventory" class="list-group-item list-group-item-action bg-light">Inventory-File</a>
         <a href="/rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
       </div>
     </div>
@@ -132,33 +127,21 @@ body {
         </button>
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
 """
-
 		self.html += subtitle
-
-
 		self.html += """
         </div>
       </nav>
       <div class="container-fluid main-content">
 """
 
-
-
-
-
 	def add(self, html):
 		self.html += html
 
 	def end(self):
-
-
 		self.html += "</div>\n"
 		self.html += "</div>\n"
 		self.html += "</div>\n"
-
 		self.html += "</body>\n"
-
-
 		self.html += """
   <script>
     $("#menu-toggle").click(function(e) {
@@ -167,7 +150,6 @@ body {
     });
   </script>
 """
-
 		self.html += "</html>\n"
 		return self.html
 

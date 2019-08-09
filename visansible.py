@@ -274,6 +274,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 
+		if type(facts["ansible_devices"]) is list:
+			return
+
 		for device in facts["ansible_devices"]:
 			if type(facts["ansible_devices"][device]) is list:
 				if device.startswith("cd"):
@@ -494,6 +497,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			if "vgs" in facts["ansible_lvm"]:
 				for vg in facts["ansible_lvm"]["vgs"]:
 					dms[0] = 0
+
+		if type(facts["ansible_devices"]) is list:
+			return html
+
 		for device in facts["ansible_devices"]:
 			if type(facts["ansible_devices"][device]) is list:
 				html += "<div class='col-6'>\n"
@@ -876,11 +883,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html += " <td>DNS-Server: </td>\n"
 			html += " <td>" + nameserver + "</td>\n"
 			html += "</tr>\n"
-		for search in facts["ansible_dns"]["search"]:
-			html += "<tr>\n"
-			html += " <td>DNS-Search: </td>\n"
-			html += " <td>" + search + "</td>\n"
-			html += "</tr>\n"
+		if "search" in facts["ansible_dns"]:
+			for search in facts["ansible_dns"]["search"]:
+				html += "<tr>\n"
+				html += " <td>DNS-Search: </td>\n"
+				html += " <td>" + search + "</td>\n"
+				html += "</tr>\n"
 		html += "</table>\n"
 		html += "<br />\n"
 		html += "<b>Default-Gateway:</b><br />\n"

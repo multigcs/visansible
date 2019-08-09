@@ -5,12 +5,16 @@
 
 class HtmlPage():
 
-	def __init__(self, name = "Visansible"):
-		self.name = name
+	def __init__(self, title = "Visansible", subtitle = ""):
+		self.title = title
+		self.subtitle = subtitle
 		self.html = "<!DOCTYPE html>\n"
 		self.html += "<html lang='en'>\n"
 		self.html += "<head>\n"
-		self.html += " <title>" + name + "</title>\n"
+		if subtitle != "":
+			self.html += " <title>" + title + " - " + subtitle + "</title>\n"
+		else:
+			self.html += " <title>" + title + "</title>\n"
 		self.html += " <meta charset='utf-8'>\n"
 		self.html += " <link rel='stylesheet' type='text/css' href='assets/vis/vis.min.css' />\n"
 		self.html += " <link rel='stylesheet' type='text/css' href='assets/bootstrap/css/bootstrap.css'>\n"
@@ -110,8 +114,6 @@ body {
 
 		self.html += """
   <div class="d-flex" id="wrapper">
-
-    <!-- Sidebar -->
     <div class="bg-light border-right" id="sidebar-wrapper">
       <div class="sidebar-heading">Visansible</div>
       <div class="list-group list-group-flush">
@@ -122,24 +124,21 @@ body {
         <a href="/rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
       </div>
     </div>
-    <!-- /#sidebar-wrapper -->
-
-    <!-- Page Content -->
     <div id="page-content-wrapper">
-
       <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
         <img id="menu-toggle" src="/assets/MaterialDesignIcons/menu-left-outline.svg" />
-
         <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
         </button>
-
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
-          <ul class="navbar-nav ml-auto mt-2 mt-lg-0">
-          </ul>
+"""
+
+		self.html += subtitle
+
+
+		self.html += """
         </div>
       </nav>
-
       <div class="container-fluid main-content">
 """
 

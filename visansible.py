@@ -29,7 +29,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		if mode == "":
 			mode = group
 
-		html = HtmlPage("Visansible - Graph(" + mode + ")");
+		html = HtmlPage("Visansible", "Graph(" + mode + ")");
 		graph = VisGraph()
 
 		self.color_n = 0
@@ -364,7 +364,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 	def show_hostgraph(self, hostname, mode = "network"):
-		html = HtmlPage("Visansible - Hostgraph");
+		html = HtmlPage("Visansible", "Hostgraph");
 		graph = VisGraph()
 		for group in groups:
 			for host in groups[group]["hosts"]:
@@ -967,7 +967,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 	def show_hostdata(self, hostname):
-		html = HtmlPage("Visansible - Hostdata");
+		html = HtmlPage("Visansible", "Hostdata");
 		for group in groups:
 			for host in groups[group]["hosts"]:
 				if hostname == host:
@@ -1035,7 +1035,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 	def show_hosts(self):
 		options = ["ansible_fqdn", "ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_product_serial"]
-		html = HtmlPage("Visansible - Hosts");
+		html = HtmlPage("Visansible", "Hosts");
 		html.add(" <div class='row'>\n")
 		html.add("  <div class='col-12'>\n")
 		html.add("<table class='table table-hover' width='90%'>\n")
@@ -1106,7 +1106,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	def show_stats(self):
 		colors = ["#cb2121", "#830909", "#923e99", "#ae83d5", "#111111", "#050505", "#646464", "#747474", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888", "#999999", "#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]
 		options = ["ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_distribution", "ansible_kernel", "ansible_processor_count", "ansible_distribution_release", "ansible_virtualization_role", "ansible_virtualization_type"]
-		html = HtmlPage("Visansible - Hosts");
+		html = HtmlPage("Visansible", "Stats");
 
 		stats = {}
 		for option in options:
@@ -1218,7 +1218,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		if self.path.startswith("/rescan"):
 			command = ['ansible', '-i', 'inventory.cfg', 'all', '-m', 'setup', '--tree', 'facts']
 			result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-			html = HtmlPage("Visansible - Rescan");
+			html = HtmlPage("Visansible", "Rescan");
 			html.add("<b>command:</b>")
 			html.add("<pre>")
 			html.add(" ".join(command))

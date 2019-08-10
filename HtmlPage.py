@@ -111,11 +111,11 @@ body {
     <div class="bg-light border-right" id="sidebar-wrapper">
       <div class="sidebar-heading">Visansible</div>
       <div class="list-group list-group-flush">
-        <a href="/" class="list-group-item list-group-item-action bg-light">Groups</a>
-        <a href="/?mode=network" class="list-group-item list-group-item-action bg-light">Network</a>
-        <a href="/?mode=hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
-        <a href="/?mode=stats" class="list-group-item list-group-item-action bg-light">Stats</a>
-        <a href="/?mode=inventory" class="list-group-item list-group-item-action bg-light">Inventory-File</a>
+        <a href="/hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
+        <a href="/network" class="list-group-item list-group-item-action bg-light">Network</a>
+        <a href="/groups" class="list-group-item list-group-item-action bg-light">Groups</a>
+        <a href="/stats" class="list-group-item list-group-item-action bg-light">Stats</a>
+        <a href="/inventory" class="list-group-item list-group-item-action bg-light">Inventory-File</a>
         <a href="/rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
       </div>
     </div>
@@ -135,7 +135,7 @@ body {
 """
 
 	def add(self, html):
-		self.html += html
+		self.html += str(html)
 
 	def end(self):
 		self.html += "</div>\n"

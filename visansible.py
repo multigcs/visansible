@@ -97,7 +97,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					fqdn = groups[group]["hosts"][host]["ansible_facts"]["ansible_fqdn"]
 					osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
 					distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
-					productname = groups[group]["hosts"][host]["ansible_facts"]["ansible_product_name"]
+					productname = ""
+					if "ansible_product_name" in groups[group]["hosts"][host]["ansible_facts"]:
+						productname = groups[group]["hosts"][host]["ansible_facts"]["ansible_product_name"]
 					architecture = groups[group]["hosts"][host]["ansible_facts"]["ansible_architecture"]
 					graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
 					if mode == "network":
@@ -125,12 +127,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					if type(facts[part]["ipv4"]) == list:
 						for ipv4 in facts[part]["ipv4"]:
 							address = ipv4["address"]
-							ipv4_ips[address] = [parentnode + "_ipv4_" + address, self.colors[self.color_n]]
+							ipv4_ips[address] = parentnode + "_ipv4_" + address
 							self.color_n = self.color_n + 1
+							if self.color_n >= len(self.colors):
+								self.color_n = 0; 
 					else:
 						address = facts[part]["ipv4"]["address"]
-						ipv4_ips[address] = [parentnode + "_ipv4_" + address, self.colors[self.color_n]]
-						self.color_n = self.color_n + 1
+						ipv4_ips[address] = parentnode + "_ipv4_" + address
 
 
 	def show_host_graph_network(self, graph, facts, parentnode, simple = False):
@@ -180,10 +183,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 									## default route ##
 									if gateway_interface == device:
 										if gateway_address in ipv4_ips:
-											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + ipv4_ips[gateway_address][0] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
 										else:
 											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.colors[self.color_n] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
 											self.color_n = self.color_n + 1
+											if self.color_n >= len(self.colors):
+												self.color_n = 0; 
 									else:
 										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
 									## show ipv4-gateway ##
@@ -194,7 +199,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 											graph.node_add("cloud", "0.0.0.0", "weather-cloudy")
 											graph.edge_add("gateway_" + gateway_address, "cloud")
 										else:
-											graph.edge_add("network_" + network, ipv4_ips[gateway_address][0], "color: { color: '" + ipv4_ips[gateway_address][0] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+											graph.edge_add("network_" + network, ipv4_ips[gateway_address], "color: { color: '" + ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
 					else:
 						address = facts[part]["ipv4"]["address"]
 						netmask = facts[part]["ipv4"]["netmask"]
@@ -223,10 +228,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								## default route ##
 								if gateway_interface == device:
 									if gateway_address in ipv4_ips:
-										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + ipv4_ips[gateway_address][0] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
 									else:
+										print("##### " + str(self.colors[self.color_n]))
 										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.colors[self.color_n] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
 										self.color_n = self.color_n + 1
+										if self.color_n >= len(self.colors):
+											self.color_n = 0; 
+
 								else:
 									graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
 								## show ipv4-gateway ##
@@ -237,7 +246,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										graph.node_add("cloud", "0.0.0.0", "weather-cloudy")
 										graph.edge_add("gateway_" + gateway_address, "cloud")
 									else:
-										graph.edge_add("network_" + network, ipv4_ips[gateway_address][0], "color: { color: '" + ipv4_ips[gateway_address][0] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+										graph.edge_add("network_" + network, ipv4_ips[gateway_address], "color: { color: '" + ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
 				if simple == False:
 					if "ipv6" in facts[part]:
 						for ipv6 in facts[part]["ipv6"]:
@@ -382,7 +391,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					facts = groups[group]["hosts"][host]["ansible_facts"]
 					fqdn = facts["ansible_fqdn"]
 					osfamily = facts["ansible_os_family"]
-					productname = facts["ansible_product_name"]
+					productname = ""
+					if "ansible_product_name" in groups[group]["hosts"][host]["ansible_facts"]:
+						productname = facts["ansible_product_name"]
 					architecture = facts["ansible_architecture"]
 					graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "monitor")
 					if mode == "network":
@@ -682,12 +693,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 	def show_host_table_mounts(self, facts):
 		html = ""
+		if "ansible_mounts" not in facts:
+			return html
 		html += "<div class='col-6'>\n"
 		html += "<div class='card'>\n"
 		html += "<div class='card-header'>Mounts<img class='float-right' src='assets/MaterialDesignIcons/folder-open.svg'></div>\n"
 		html += "<div class='card-body'>\n"
 		html += "<div class='row'>\n"
-
 		for mount in facts["ansible_mounts"]:
 			html += "<div class='col-6'>\n"
 			html += "<b>Mount:</b><br />\n"
@@ -845,7 +857,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 	def show_hosts(self):
-		options = ["ansible_fqdn", "ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_product_serial"]
+		options = ["ansible_fqdn", "ansible_distribution", "ansible_architecture", "ansible_product_name", "ansible_product_serial"]
 		html = HtmlPage("Visansible", "Hosts");
 		html.add(" <div class='row'>\n")
 		html.add("  <div class='col-12'>\n")
@@ -864,11 +876,11 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add("</tr>\n")
 			for host in groups[group]["hosts"]:
 				html.add("<tr>\n")
-				html.add(" <td width='10%'><a href='/?host=" + host + "'>" + host + "</a></td>\n")
+				html.add(" <td width='10%'><a href='host?host=" + host + "'>" + host + "</a></td>\n")
 				for option in options:
 					if "ansible_facts" in groups[group]["hosts"][host] and option in groups[group]["hosts"][host]["ansible_facts"]:
 						value = str(groups[group]["hosts"][host]["ansible_facts"][option])
-						if option == "ansible_os_family":
+						if option == "ansible_distribution":
 							html.add("<td width='10%'>")
 							osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
 							distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
@@ -886,7 +898,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				if "msg" in groups[group]["hosts"][host]:
 					html.add(" <td>" + groups[group]["hosts"][host]["msg"].strip() + "</td>\n")
 				elif "ansible_facts" in groups[group]["hosts"][host]:
-					html.add(" <td>OK</td>\n")
+
+
+					html.add(" <td>OK <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+
 				else:
 					html.add(" <td>UNKNOWN-ERROR</td>\n")
 				html.add("</tr>\n")
@@ -926,7 +941,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		for group in groups:
 			for host in groups[group]["hosts"]:
 				for option in options:
-					value = groups[group]["hosts"][host]["ansible_facts"][option];
+					if option in groups[group]["hosts"][host]["ansible_facts"]:
+						value = groups[group]["hosts"][host]["ansible_facts"][option];
+					else:
+						value = "UNKNOWN"
 					if value not in stats[option]:
 						stats[option][value] = 0
 					stats[option][value] += 1
@@ -1024,8 +1042,20 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 	def do_GET(self):
 		print(self.path)
+		opts = {}
+		if "?" in self.path:
+			for opt in self.path.split("?")[1].split("&"):
+				name = opt.split("=")[0]
+				value = opt.split("=")[1]
+				opts[name] = value
+
+
 		if self.path.startswith("/rescan"):
-			command = ['ansible', '-i', 'inventory.cfg', 'all', '-m', 'setup', '--tree', 'facts']
+			if "?" in self.path:
+				if "host" in opts:
+					command = ['ansible', '-i', 'inventory.cfg', opts["host"], '-m', 'setup', '--tree', 'facts']
+			else:
+				command = ['ansible', '-i', 'inventory.cfg', 'all', '-m', 'setup', '--tree', 'facts']
 			result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			html = HtmlPage("Visansible", "Rescan");
 			html.add("<b>command:</b>")
@@ -1047,6 +1077,27 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			self.send_header("Content-type", "text/html")
 			self.end_headers()
 			self.wfile.write(bytes(html.end(), "utf8"))
+			return
+		elif self.path.startswith("/hosts"):
+			self.show_hosts()
+			return
+		elif self.path.startswith("/stats"):
+			self.show_stats()
+			return
+		elif self.path.startswith("/inventory"):
+			self.show_inventory()
+			return
+		elif self.path.startswith("/network"):
+			self.show_graph("network")
+			return
+		elif self.path.startswith("/groups"):
+			self.show_graph("group")
+			return
+		elif self.path.startswith("/host"):
+			if "host" in opts:
+				self.show_hostdata(opts["host"])
+			else:
+				self.show_hosts()
 			return
 		elif self.path.startswith("/assets/"):
 			if ".." in self.path:
@@ -1078,31 +1129,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					self.send_header("Content-type", "text/plain")
 					self.end_headers()
 					self.wfile.write(bytes("file not found: " + self.path, "utf8"))
-		elif self.path.startswith("/?host="):
-			opts = {}
-			opts["mode"] = "network"
-			for opt in self.path.split("?")[1].split("&"):
-				name = opt.split("=")[0]
-				value = opt.split("=")[1]
-				opts[name] = value
-#			self.show_hostgraph(opts["host"], "all")
-			self.show_hostdata(opts["host"])
-		elif self.path.startswith("/?mode="):
-			opts = {}
-			for opt in self.path.split("?")[1].split("&"):
-				name = opt.split("=")[0]
-				value = opt.split("=")[1]
-				opts[name] = value
-			if opts["mode"] == "hosts":
-				self.show_hosts()
-			elif opts["mode"] == "stats":
-				self.show_stats()
-			elif opts["mode"] == "inventory":
-				self.show_inventory()
-			else:
-				self.show_graph(opts["mode"])
 		else:
-			self.show_graph()
+			self.show_hosts()
 		return
 
 

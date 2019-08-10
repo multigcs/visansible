@@ -23,6 +23,7 @@ osicons = {
 	"FreeBSD": "freebsd",
 	"Suse": "opensuse",
 	"LibreELEC": "youtube-tv",
+	"OpenWrt": "router-wireless",
 }
 
 
@@ -355,9 +356,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							graph.edge_add(parentnode + "_disk_" + device, parentnode + "_partition_" + partition)
 							## show partition-mounts ##
 							for mount in facts["ansible_mounts"]:
-								if mount["uuid"] == uuid:
-									graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-									graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
+								if facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and mount["uuid"] != None:
+									if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
+										graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+										graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
+								else:
+									if mount["device"] == "/dev/" + partition:
+										graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+										graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
 						## show disk-mounts ##
 						for mount in facts["ansible_mounts"]:
 							if "links" in facts["ansible_devices"][device] and "uuids" in facts["ansible_devices"][device]["links"]:
@@ -469,7 +475,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				## show disk-mounts ##
 				for mount in facts["ansible_mounts"]:
 					if mount["device"] == "/dev/" + device:
-						html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"])
+						html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
 						html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 				html += "</table>\n"
 				html += "</div>\n"
@@ -481,7 +487,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					## show mounts ##
 					for mount in facts["ansible_mounts"]:
 						if mount["device"] == "/dev/" + partition:
-							html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"])
+							html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
 							html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 					html += "</table>\n"
 					html += "<br />\n"
@@ -510,7 +516,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if "links" in facts["ansible_devices"][device] and "uuids" in facts["ansible_devices"][device]["links"]:
 							for disk_uuid in facts["ansible_devices"][device]["links"]["uuids"]:
 								if mount["uuid"] == disk_uuid:
-									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"])
+									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
 									html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 
 					## check if device is slave of another disk ##
@@ -559,9 +565,16 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								html += "</tr>\n"
 						## show mounts ##
 						for mount in facts["ansible_mounts"]:
-							if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
-								html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"], "&nbsp;&nbsp;&nbsp;")
-								html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
+							if facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and mount["uuid"] != None:
+								if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
+									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
+									html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
+							else:
+								if mount["device"] == "/dev/" + partition:
+									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
+									html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
+
+
 						html += "</table>\n"
 						html += "<br />\n"
 					html += "</div>\n"
@@ -606,7 +619,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								## show mounts ##
 								for mount in facts["ansible_mounts"]:
 									if mount["device"] == lv_device:
-										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "uuid"], "&nbsp;&nbsp;&nbsp;")
+										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
 										html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
 								html += "</table>\n"
 								html += "<br />\n"
@@ -664,6 +677,30 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html += "</div>\n"
 			html += "</div>\n"
 			html += "</div>\n"
+		return html
+
+
+	def show_host_table_mounts(self, facts):
+		html = ""
+		html += "<div class='col-6'>\n"
+		html += "<div class='card'>\n"
+		html += "<div class='card-header'>Mounts<img class='float-right' src='assets/MaterialDesignIcons/folder-open.svg'></div>\n"
+		html += "<div class='card-body'>\n"
+		html += "<div class='row'>\n"
+
+		for mount in facts["ansible_mounts"]:
+			html += "<div class='col-6'>\n"
+			html += "<b>Mount:</b><br />\n"
+			html += "<table>\n"
+			html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
+			html += "</table>\n"
+			html += "<br />\n"
+			html += "</div>\n"
+
+		html += "</div>\n"
+		html += "</div>\n"
+		html += "</div>\n"
+		html += "</div>\n"
 		return html
 
 
@@ -782,6 +819,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						html.add(" </div>\n")
 						html.add(" <div class='row'>\n")
 						html.add(self.show_host_table_disks(groups[group]["hosts"][host]["ansible_facts"]))
+						html.add(self.show_host_table_mounts(groups[group]["hosts"][host]["ansible_facts"]))
 						html.add("  <div class='col-12'>\n")
 						html.add("  <div class='card'>\n")
 						html.add("   <div class='card-header'>Disks-Graph<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n")

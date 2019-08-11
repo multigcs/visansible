@@ -3,40 +3,23 @@
 # ansible -i inventory.cfg all -m setup --tree facts
 #
 
-
 import json
 import os
+import time
+from datetime import datetime
+import glob
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import subprocess
-
 from HtmlPage import *
 from VisGraph import *
+from bs import *
 
-
-
-groups = {}
+inventory = {}
 ipv4_ips = {}
-
-osicons = {
-	"Debian": "debian",
-	"RedHat": "hat-fedora",
-	"FreeBSD": "freebsd",
-	"Suse": "opensuse",
-	"LibreELEC": "youtube-tv",
-	"OpenWrt": "router-wireless",
-}
-
-
-def osicons_get(osfamily, distribution = ""):
-	if osfamily in osicons:
-		return osicons[osfamily]
-	elif distribution in osicons:
-		return osicons[distribution]
-	else:
-		return "monitor"
 
 
 def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
+	global hprefix
 	html = ""
 	if options == "":
 		options = []
@@ -57,7 +40,7 @@ def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
 			title = option.replace("ansible_", "").replace("_", " ").capitalize()
 		if option in facts:
 			value = str(facts[option])
-			html += "<tr><td>" + offset + title + ": </td><td align='" + align + "'>"
+			html += hprefix + "<tr><td>" + offset + title + ": </td><td align='" + align + "'>"
 			if option.endswith("_mb"):
 				html += value + " MB"
 			elif option.endswith("_g"):
@@ -69,46 +52,50 @@ def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
 	return html
 	
 
-
 class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	color_n = 0
 	colors = ["#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]
 
-	def show_graph(self, mode = "group"):
+	def show_graph(self, mode = "group", stamp = "0"):
 		if mode == "":
 			mode = group
-		html = HtmlPage("Visansible", "Graph (" + mode + ")");
+		links = self.show_history(stamp)
+		if stamp == "0":
+			html = HtmlPage("Visansible", "Graph (" + mode + ")", "latest info", links);
+		else:
+			html = HtmlPage("Visansible", "Graph (" + mode + ")", datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S"), links);
 		graph = VisGraph("visgraph", "800px")
 		self.color_n = 0
-		for group in groups:
-			for host in groups[group]["hosts"]:
-				if "ansible_facts" in groups[group]["hosts"][host]:
-					if mode == "network":
-						self.show_host_graph_network_pre(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-		for group in groups:
+		for host in inventory["hosts"]:
+			if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
+				if mode == "network":
+					self.show_host_graph_network_pre(graph, inventory["hosts"][host]["0"]["ansible_facts"], "host_" + host, stamp)
+		for host in inventory["hosts"]:
+			group = inventory["hosts"][host]["group"]
 			if mode == "group":
 				graph.node_add("all", "all", "cloud")
 				graph.node_add("group_" + group, group, "table")
 				graph.edge_add("all", "group_" + group)
-			for host in groups[group]["hosts"]:
+			if stamp == "0" or int(stamp) >= int(inventory["hosts"][host]["first"]):
 				if mode == "group":
 					graph.edge_add("group_" + group, "host_" + host)
-				if "ansible_facts" in groups[group]["hosts"][host]:
-					fqdn = groups[group]["hosts"][host]["ansible_facts"]["ansible_fqdn"]
-					osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
-					distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
+				if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
+					fqdn = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_fqdn"]
+					osfamily = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_os_family"]
+					distribution = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_distribution"]
 					productname = ""
-					if "ansible_product_name" in groups[group]["hosts"][host]["ansible_facts"]:
-						productname = groups[group]["hosts"][host]["ansible_facts"]["ansible_product_name"]
-					architecture = groups[group]["hosts"][host]["ansible_facts"]["ansible_architecture"]
+					if "ansible_product_name" in inventory["hosts"][host]["0"]["ansible_facts"]:
+						productname = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_product_name"]
+					architecture = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_architecture"]
 					graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
 					if mode == "network":
-						self.show_host_graph_network(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host, True)
-				elif "msg" in groups[group]["hosts"][host]:
-					graph.node_add("host_" + host, host + "\\n" + groups[group]["hosts"][host]["msg"].strip().replace(":", "\\n"), "monitor", "font: {color: '#FF0000'}")
+						self.show_host_graph_network(graph, inventory["hosts"][host]["0"]["ansible_facts"], "host_" + host, stamp, True)
+				elif "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host]["0"]:
+					graph.node_add("host_" + host, host + "\\n" + inventory["hosts"][host]["0"]["msg"].strip().replace(":", "\\n"), "monitor", "font: {color: '#FF0000'}")
 				else:
-					graph.node_add("host_" + host, host + "\\nUnknown-Error", "monitor", "font: {color: '#FF0000'}")
-					print(json.dumps(groups[group]["hosts"][host], indent=4, sort_keys=True));
+					if stamp == "0":
+						graph.node_add("host_" + host, host + "\\nUnknown-Error", "monitor", "font: {color: '#FF0000'}")
+					print(json.dumps(inventory["hosts"][host], indent=4, sort_keys=True));
 		html.add(graph.end())
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
@@ -117,7 +104,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return
 
 
-	def show_host_graph_network_pre(self, graph, facts, parentnode):
+	def show_host_graph_network_pre(self, graph, facts, parentnode, stamp = "0"):
 		for part in facts:
 			if part != "ansible_default_ipv4" and type(facts[part]) is dict and "device" in facts[part]:
 				device = facts[part]["device"]
@@ -136,7 +123,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						ipv4_ips[address] = parentnode + "_ipv4_" + address
 
 
-	def show_host_graph_network(self, graph, facts, parentnode, simple = False):
+	def show_host_graph_network(self, graph, facts, parentnode, stamp = "0", simple = False):
 		gateway = ""
 		gateway_interface = ""
 		if "ansible_default_ipv4" in facts:
@@ -382,35 +369,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										graph.edge_add(parentnode + "_disk_" + device, parentnode + "_mount_" + mount["mount"])
 
 
-	def show_hostgraph(self, hostname, mode = "network"):
-		html = HtmlPage("Visansible", "Hostgraph");
-		graph = VisGraph()
-		for group in groups:
-			for host in groups[group]["hosts"]:
-				if "ansible_facts" in groups[group]["hosts"][host] and hostname == host:
-					facts = groups[group]["hosts"][host]["ansible_facts"]
-					fqdn = facts["ansible_fqdn"]
-					osfamily = facts["ansible_os_family"]
-					productname = ""
-					if "ansible_product_name" in groups[group]["hosts"][host]["ansible_facts"]:
-						productname = facts["ansible_product_name"]
-					architecture = facts["ansible_architecture"]
-					graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, "monitor")
-					if mode == "network":
-						self.show_host_graph_network(graph, facts, "host_" + host)
-					elif mode == "disks":
-						self.show_host_graph_disks(graph, facts, "host_" + host)
-					elif mode == "all":
-						self.show_host_graph_disks(graph, facts, "host_" + host)
-						self.show_host_graph_network(graph, facts, "host_" + host)
-		html.add(graph.end())
-		self.send_response(200)
-		self.send_header("Content-type", "text/html")
-		self.end_headers()
-		self.wfile.write(bytes(html.end(), "utf8"))
-		return
-
-
 	def show_host_table_ifaces(self, facts):
 		html = ""
 		if "ansible_default_ipv4" in facts:
@@ -419,45 +377,42 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				gateway_interface = facts["ansible_default_ipv4"]["interface"]
 		for part in facts:
 			if part != "ansible_default_ipv4" and type(facts[part]) is dict and "device" in facts[part]:
-				html += "<div class='col-6'>\n"
-				html += "<div class='card'>\n"
-				html += "<div class='card-header'>Network-Interface: " + facts[part]["device"] + "<img class='float-right' src='assets/MaterialDesignIcons/port.svg'></div>\n"
-				html += "<div class='card-body'>\n"
-				html += "<div class='row'>\n"
-				html += "<div class='col-6'>\n"
-				html += "<b>Interface:</b>\n"
-				html += "<table>\n"
+				html += bs_col_begin("6")
+				html += bs_card_begin("Network-Interface: " + facts[part]["device"], "port")
+				html += bs_row_begin()
+				html += bs_col_begin("6")
+				html += bs_add("<b>Interface:</b>")
+				html += bs_table_begin()
 				html += facts2rows(facts[part], ["device", "model", "macaddress", "mtu", "promisc", "type", "active"])
-				html += "</table>\n"
-				html += "</div>\n"
-				html += "<div class='col-6'>\n"
+				html += bs_table_end()
+				html += bs_col_end()
+				html += bs_col_begin("6")
 				if "ipv4" in facts[part]:
 					if type(facts[part]["ipv4"]) == list:
 						for ipv4 in facts[part]["ipv4"]:
 							fact = ipv4
-							html += "<b>IPv4:</b>\n"
-							html += "<table>\n"
+							html += bs_add("<b>IPv4:</b>")
+							html += bs_table_begin()
 							html += facts2rows(ipv4, ["address", "netmask", "broadcast", "network"])
-							html += "</table>\n"
-							html += "<br />\n"
+							html += bs_table_end()
+							bs_add("<br />")
 					else:
-						html += "<b>IPv4:</b>\n"
-						html += "<table>\n"
+						html += bs_add("<b>IPv4:</b>")
+						html += bs_table_begin()
 						html += facts2rows(facts[part]["ipv4"], ["address", "netmask", "broadcast", "network"])
-						html += "</table>\n"
-						html += "<br />\n"
+						html += bs_table_end()
+						bs_add("<br />")
 				if "ipv6" in facts[part]:
 					for ipv6 in facts[part]["ipv6"]:
-						html += "<b>IPv6:</b>\n"
-						html += "<table>\n"
+						html += bs_add("<b>IPv6:</b>")
+						html += bs_table_begin()
 						html += facts2rows(ipv6, ["address", "prefix", "scope"])
-						html += "</table>\n"
-						html += "<br />\n"
-				html += "</div>\n"
-				html += "</div>\n"
-				html += "</div>\n"
-				html += "</div>\n"
-				html += "</div>\n"
+						html += bs_table_end()
+						bs_add("<br />")
+				html += bs_col_end()
+				html += bs_row_end()
+				html += bs_card_end()
+				html += bs_col_end()
 		return html
 
 
@@ -474,53 +429,47 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return html
 		for device in facts["ansible_devices"]:
 			if type(facts["ansible_devices"][device]) is list:
-				html += "<div class='col-6'>\n"
-				html += "<div class='card'>\n"
-				html += "<div class='card-header'>Disk: " + device + "<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n"
-				html += "<div class='card-body'>\n"
-				html += "<div class='row'>\n"
+				html += bs_col_begin("6")
+				html += bs_card_begin("Disk: " + device, "harddisk")
+				html += bs_row_begin()
 				## show disk ##
-				html += "<div class='col-6'>\n"
-				html += "<b>Disk: " + device + "</b>\n"
-				html += "<table>\n"
-				## show disk-mounts ##
+				html += bs_col_begin("6")
+				html += bs_add("<b>Disk: " + device + "</b>")
+				html += bs_table_begin()
 				for mount in facts["ansible_mounts"]:
 					if mount["device"] == "/dev/" + device:
 						html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
-						html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
-				html += "</table>\n"
-				html += "</div>\n"
+						html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+				html += bs_table_end()
+				html += bs_col_end()
 				## show partitions ##
-				html += "<div class='col-6'>\n"
+				html += bs_col_begin("6")
 				for partition in facts["ansible_devices"][device]:
-					html += "<b>Partition: " + partition + "</b>\n"
-					html += "<table>\n"
+					html += bs_add("<b>Partition: " + partition + "</b>")
+					html += bs_table_begin()
 					## show mounts ##
 					for mount in facts["ansible_mounts"]:
 						if mount["device"] == "/dev/" + partition:
 							html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
-							html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
-					html += "</table>\n"
-					html += "<br />\n"
-				html += "</div>\n"
-				html += "</div>\n"
-				html += "</div>\n"
-				html += "</div>\n"
-				html += "</div>\n"
+							html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+					html += bs_table_end()
+					bs_add("<br />")
+				html += bs_col_end()
+				html += bs_row_end()
+				html += bs_card_end()
+				html += bs_col_end()
 			if "partitions" in facts["ansible_devices"][device]:
 				if facts["ansible_devices"][device]["size"] != "0.00 Bytes" and (len(dms) == 0 or not device.startswith("dm-") ):
-					html += "<div class='col-6'>\n"
-					html += "<div class='card'>\n"
+					html += bs_col_begin("6")
 					if "model" in facts["ansible_devices"][device] and ("DVD" in str(facts["ansible_devices"][device]["model"]) or "CD" in str(facts["ansible_devices"][device]["model"])):
-						html += "<div class='card-header'>Disk: " + device + "<img class='float-right' src='assets/MaterialDesignIcons/disk-player.svg'></div>\n"
+						html += bs_card_begin("Disk: " + device, "disk-player")
 					else:
-						html += "<div class='card-header'>Disk: " + device + "<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n"
-					html += "<div class='card-body'>\n"
-					html += "<div class='row'>\n"
+						html += bs_card_begin("Disk: " + device, "harddisk")
+					html += bs_row_begin()
 					## show disk ##
-					html += "<div class='col-6'>\n"
-					html += "<b>Disk:</b>\n"
-					html += "<table>\n"
+					html += bs_col_begin("6")
+					html += bs_add("<b>Disk:</b>")
+					html += bs_table_begin()
 					html += facts2rows(facts["ansible_devices"][device], ["host", "vendor", "model", "serial", "size"])
 					## show disk-mounts ##
 					for mount in facts["ansible_mounts"]:
@@ -528,17 +477,17 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							for disk_uuid in facts["ansible_devices"][device]["links"]["uuids"]:
 								if mount["uuid"] == disk_uuid:
 									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
-									html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
+									html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
 
 					## check if device is slave of another disk ##
 					for device2 in facts["ansible_devices"]:
 						if "links" in facts["ansible_devices"][device2] and "masters" in facts["ansible_devices"][device2]["links"]:
 							for master in facts["ansible_devices"][device2]["links"]["masters"]:
 								if device == master:
-									html += "<tr>\n"
-									html += " <td>Master: </td>\n"
-									html += " <td>" + device2 + "</td>\n"
-									html += "</tr>\n"
+									html += bs_add("<tr>")
+									html += bs_add(" <td>Master: </td>")
+									html += bs_add(" <td>" + device2 + "</td>")
+									html += bs_add("</tr>")
 
 					## check if device is slave of another partition ##
 					for device2 in facts["ansible_devices"]:
@@ -547,308 +496,441 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								if "links" in facts["ansible_devices"][device2]["partitions"][partition2] and "masters" in facts["ansible_devices"][device2]["partitions"][partition2]["links"]:
 									for master in facts["ansible_devices"][device2]["partitions"][partition2]["links"]["masters"]:
 										if device == master:
-											html += "<tr>\n"
-											html += " <td>Master: </td>\n"
-											html += " <td>" + partition2 + "</td>\n"
-											html += "</tr>\n"
+											html += bs_add("<tr>")
+											html += bs_add(" <td>Master: </td>")
+											html += bs_add(" <td>" + partition2 + "</td>")
+											html += bs_add("</tr>")
 					## show disk slaves ##
 					if "links" in facts["ansible_devices"][device] and "masters" in facts["ansible_devices"][device]["links"]:
 						for master in facts["ansible_devices"][device]["links"]["masters"]:
-							html += "<tr>\n"
-							html += " <td>Slave-Device: </td>\n"
-							html += " <td>" + master + "</td>\n"
-							html += "</tr>\n"
-					html += "</table>\n"
-					html += "</div>\n"
+							html += bs_add("<tr>")
+							html += bs_add(" <td>Slave-Device: </td>")
+							html += bs_add(" <td>" + master + "</td>")
+							html += bs_add("</tr>")
+					html += bs_table_end()
+					html += bs_col_end()
 					## show partitions ##
-					html += "<div class='col-6'>\n"
+					html += bs_col_begin("6")
 					for partition in facts["ansible_devices"][device]["partitions"]:
-						html += "<b>Partition: " + partition + "</b>\n"
-						html += "<table>\n"
+						html += bs_add("<b>Partition: " + partition + "</b>")
+						html += bs_table_begin()
 						## show partition ##
 						html += facts2rows(facts["ansible_devices"][device]["partitions"][partition], ["uuid", "size", "start", "sectors", "sectorsize"])
 						## show partition slaves ##
 						if "links" in facts["ansible_devices"][device]["partitions"][partition] and "masters" in facts["ansible_devices"][device]["partitions"][partition]["links"]:
 							for master in facts["ansible_devices"][device]["partitions"][partition]["links"]["masters"]:
-								html += "<tr>\n"
-								html += " <td>Slave-Device: </td>\n"
-								html += " <td>" + master + "</td>\n"
-								html += "</tr>\n"
+								html += bs_add("<tr>")
+								html += bs_add(" <td>Slave-Device: </td>")
+								html += bs_add(" <td>" + master + "</td>")
+								html += bs_add("</tr>")
 						## show mounts ##
 						for mount in facts["ansible_mounts"]:
 							if facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and mount["uuid"] != None:
 								if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
 									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
-									html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
+									html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
 							else:
 								if mount["device"] == "/dev/" + partition:
 									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
-									html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
-
-
-						html += "</table>\n"
-						html += "<br />\n"
-					html += "</div>\n"
-					html += "</div>\n"
-					html += "</div>\n"
-					html += "</div>\n"
-					html += "</div>\n"
+									html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+						html += bs_table_end()
+						bs_add("<br />")
+					html += bs_col_end()
+					html += bs_row_end()
+					html += bs_card_end()
+					html += bs_col_end()
 		if "ansible_lvm" in facts:
 			if "vgs" in facts["ansible_lvm"]:
 				for vg in facts["ansible_lvm"]["vgs"]:
 					vg_pv = facts["ansible_lvm"]["vgs"][vg]
-					html += "<div class='col-6'>\n"
-					html += "<div class='card'>\n"
-					html += "<div class='card-header'>LVM_VG: " + vg + "<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n"
-					html += "<div class='card-body'>\n"
-					html += "<div class='row'>\n"
-					html += "<div class='col-6'>\n"
-					html += "<b>VG:</b>\n"
-					html += "<table>\n"
+					html += bs_col_begin("6")
+					html += bs_card_begin("LVM_VG: " + vg, "harddisk")
+					html += bs_row_begin()
+					html += bs_col_begin("6")
+					html += bs_add("<b>VG:</b>")
+					html += bs_table_begin()
 					html += facts2rows(facts["ansible_lvm"]["vgs"][vg], ["size_g", "free_g", "num_lvs", "num_pvs"])
 					if "pvs" in facts["ansible_lvm"]:
 						for pv in facts["ansible_lvm"]["pvs"]:
 							pv_vg = facts["ansible_lvm"]["pvs"][pv]["vg"]
 							if pv_vg == vg:
-								html += "<tr>\n"
-								html += " <td>&nbsp;&nbsp;&nbsp;PV: </td>\n"
-								html += " <td>" + pv + "</td>\n"
-								html += "</tr>\n"
+								html += bs_add("<tr>")
+								html += bs_add(" <td>&nbsp;&nbsp;&nbsp;PV: </td>")
+								html += bs_add(" <td>" + pv + "</td>")
+								html += bs_add("</tr>")
 								html += facts2rows(facts["ansible_lvm"]["pvs"][pv], ["size_g", "free_g"], "&nbsp;&nbsp;&nbsp;")
-								html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
-					html += "</table>\n"
-					html += "</div>\n"
-					html += "<div class='col-6'>\n"
+								html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+					html += bs_table_end()
+					html += bs_col_end()
+					html += bs_col_begin("6")
 					if "lvs" in facts["ansible_lvm"]:
 						for lv in facts["ansible_lvm"]["lvs"]:
 							lv_vg = facts["ansible_lvm"]["lvs"][lv]["vg"]
 							if lv_vg == vg:
 								lv_device = "/dev/mapper/" + vg + "-" + lv
-								html += "<b>LV: " + lv + "</b>\n"
-								html += "<table>\n"
+								html += bs_add("<b>LV: " + lv + "</b>")
+								html += bs_table_begin()
 								html += facts2rows(facts["ansible_lvm"]["lvs"][lv], ["size_g"])
 								## show mounts ##
 								for mount in facts["ansible_mounts"]:
 									if mount["device"] == lv_device:
 										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
-										html += "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>\n"
-								html += "</table>\n"
-								html += "<br />\n"
-					html += "</div>\n"
-					html += "</div>\n"
-					html += "</div>\n"
-					html += "</div>\n"
-					html += "</div>\n"
+										html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+								html += bs_table_end()
+								bs_add("<br />")
+					html += bs_col_end()
+					html += bs_row_end()
+					html += bs_card_end()
+					html += bs_col_end()
 		return html
 
 
 	def show_host_table_general(self, facts):
-		html = ""
-		html += "<div class='col-6'>\n"
-		html += "<div class='card'>\n"
 		osfamily = facts["ansible_os_family"]
 		distribution = facts["ansible_distribution"]
-		html += "<div class='card-header'>General<img class='float-right' src='assets/MaterialDesignIcons/" + osicons_get(osfamily, distribution) + ".svg'></div>\n"
-		html += "<div class='card-body'>\n"
-		html += "<div class='row'>\n"
-		html += "<div class='col-6'>\n"
-		html += "<table>\n"
+		html = ""
+		html += bs_col_begin("6")
+		html += bs_card_begin("General", osicons_get(osfamily, distribution))
+		html += bs_row_begin()
+		html += bs_col_begin("6")
+		html += bs_table_begin()
 		html += facts2rows(facts, ["ansible_fqdn", "ansible_system_vendor", "ansible_product_name", "ansible_product_serial", "ansible_architecture", "ansible_memtotal_mb", "ansible_virtualization_role", "ansible_virtualization_type"])
-		html += "</table>\n"
-		html += "</div>\n"
-		html += "<div class='col-6'>\n"
-		html += "<table>\n"
+		html += bs_table_end()
+		html += bs_col_end()
+		html += bs_col_begin("6")
+		html += bs_table_begin()
 		html += facts2rows(facts, ["ansible_distribution", "ansible_distribution_major_version", "ansible_distribution_release", "ansible_distribution_version", "ansible_distribution_file_variety", "ansible_userspace_architecture", "ansible_kernel", "ansible_pkg_mgr"])
-		html += "</table>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		return html
-
-
-	def show_host_table_memory(self, facts):
-		html = ""
-		if "ansible_memory_mb" in facts:
-			html += "<div class='col-6'>\n"
-			html += "<div class='card'>\n"
-			html += "<div class='card-header'>Memory<img class='float-right' src='assets/MaterialDesignIcons/memory.svg'></div>\n"
-			html += "<div class='card-body'>\n"
-			html += "<div class='row'>\n"
-			for section in ["nocache", "real", "swap"]:
-				if section in facts["ansible_memory_mb"]:
-					html += "<div class='col-4'>\n"
-					html += "<b>" + section.capitalize() + ":</b><br />\n"
-					html += "<table>\n"
-					html += facts2rows(facts["ansible_memory_mb"][section], "", "", "MB", "right")
-					html += "</table>\n"
-					html += "</div>\n"
-			html += "</div>\n"
-			html += "</div>\n"
-			html += "</div>\n"
-			html += "</div>\n"
-		return html
-
-
-	def show_host_table_mounts(self, facts):
-		html = ""
-		if "ansible_mounts" not in facts:
-			return html
-		html += "<div class='col-6'>\n"
-		html += "<div class='card'>\n"
-		html += "<div class='card-header'>Mounts<img class='float-right' src='assets/MaterialDesignIcons/folder-open.svg'></div>\n"
-		html += "<div class='card-body'>\n"
-		html += "<div class='row'>\n"
-		for mount in facts["ansible_mounts"]:
-			html += "<div class='col-6'>\n"
-			html += "<b>Mount:</b><br />\n"
-			html += "<table>\n"
-			html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
-			html += "</table>\n"
-			html += "<br />\n"
-			html += "</div>\n"
-
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		return html
-
-
-	def show_host_table_network(self, facts):
-		html = ""
-		html += "<div class='col-6'>\n"
-		html += "<div class='card'>\n"
-		html += "<div class='card-header'>Network<img class='float-right' src='assets/MaterialDesignIcons/net.svg'></div>\n"
-		html += "<div class='card-body'>\n"
-		html += "<div class='row'>\n"
-		html += "<div class='col-6'>\n"
-		html += "<b>Hostname & Domain:</b><br />\n"
-		html += "<table>\n"
-		html += facts2rows(facts, ["ansible_hostname", "ansible_domain", "ansible_fqdn"])
-		html += "</table>\n"
-		html += "</div>\n"
-		html += "<div class='col-6'>\n"
-		html += "<b>DNS-Server:</b><br />\n"
-		html += "<table>\n"
-		if "nameservers" in facts["ansible_dns"]:
-			for nameserver in facts["ansible_dns"]["nameservers"]:
-				html += "<tr>\n"
-				html += " <td>DNS-Server: </td>\n"
-				html += " <td>" + nameserver + "</td>\n"
-				html += "</tr>\n"
-		if "search" in facts["ansible_dns"]:
-			for search in facts["ansible_dns"]["search"]:
-				html += "<tr>\n"
-				html += " <td>DNS-Search: </td>\n"
-				html += " <td>" + search + "</td>\n"
-				html += "</tr>\n"
-		html += "</table>\n"
-		html += "<br />\n"
-		html += "<b>Default-Gateway:</b><br />\n"
-		html += "<table>\n"
-		if "ansible_default_ipv4" in facts:
-			html += facts2rows(facts["ansible_default_ipv4"], ["gateway", "interface"])
-		html += "</table>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		return html
-
-
-	def show_host_table_processors(self, facts):
-		html = ""
-		html += "<div class='col-6'>\n"
-		html += "<div class='card'>\n"
-		osfamily = facts["ansible_os_family"]
-		html += "<div class='card-header'>Processors<img class='float-right' src='assets/MaterialDesignIcons/chip.svg'></div>\n"
-		html += "<div class='card-body'>\n"
-		html += "<div class='row'>\n"
-		html += "<div class='col-6'>\n"
-		html += "<b>CPUs/Cores/Threads:</b><br />\n"
-		html += "<table>\n"
+		html += bs_table_end()
+		html += bs_col_end()
+		html += bs_row_end()
+		html += bs_row_begin()
+		html += bs_col_begin("12")
+		html += bs_add("<hr />")
+		html += bs_col_end()
+		html += bs_row_end()
+		html += bs_row_begin()
+		html += bs_col_begin("6")
+		html += bs_add("<b>CPUs/Cores/Threads:</b><br />")
+		html += bs_table_begin()
 		html += facts2rows(facts, ["ansible_processor_count", "ansible_processor_cores", "ansible_processor_threads_per_core", "ansible_processor_vcpus"], "", "", "right")
-		html += "</table>\n"
-		html += "</div>\n"
-		html += "<div class='col-6'>\n"
-		html += "<b>Types:</b><br />\n"
-		html += "<table>\n"
+		html += bs_table_end()
+		html += bs_col_end()
+		html += bs_col_begin("6")
+		html += bs_add("<b>Types:</b><br />")
+		html += bs_table_begin()
 		if "ansible_processor" in facts:
 			processor_n = 0
 			for part in facts["ansible_processor"]:
 				if part.isdigit():
 					processor_n += 1
 					if processor_n != 1:
-						html += "</td>\n"
-						html += "</tr>\n"
-					html += "<tr>\n"
-					html += " <td>#" + str(processor_n) + ": </td>\n"
-					html += " <td>"
+						html += bs_add("</td>")
+						html += bs_add("</tr>")
+					html += bs_add("<tr>")
+					html += bs_add(" <td>#" + str(processor_n) + ": </td>")
+					html += bs_add(" <td>")
 				else:
 					html += part + " "
-			html += "</td>\n"
-			html += "</tr>\n"
-		html += "</table>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
-		html += "</div>\n"
+			html += bs_add("</td>")
+			html += bs_add("</tr>")
+		html += bs_table_end()
+		html += bs_col_end()
+		html += bs_row_end()
+		html += bs_card_end()
+		html += bs_col_end()
 		return html
 
 
-	def show_hostdata(self, hostname):
-		html = HtmlPage("Visansible", "Hostdata (" + hostname + ")");
-		for group in groups:
-			for host in groups[group]["hosts"]:
-				if hostname == host:
-					if "ansible_facts" in groups[group]["hosts"][host]:
-						osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
-						distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
-						icon = osicons_get(osfamily, distribution)
-						html.add(" <div class='row'>\n")
-						html.add(self.show_host_table_general(groups[group]["hosts"][host]["ansible_facts"]))
-						html.add(self.show_host_table_processors(groups[group]["hosts"][host]["ansible_facts"]))
-						html.add(self.show_host_table_memory(groups[group]["hosts"][host]["ansible_facts"]))
-						html.add(self.show_host_table_network(groups[group]["hosts"][host]["ansible_facts"]))
-						html.add(" </div>\n")
-						html.add(" <div class='row'>\n")
-						html.add(self.show_host_table_ifaces(groups[group]["hosts"][host]["ansible_facts"]))
-						html.add("  <div class='col-12'>\n")
-						html.add("  <div class='card'>\n")
-						html.add("   <div class='card-header'>Network-Graph<img class='float-right' src='assets/MaterialDesignIcons/net.svg'></div>\n")
-						html.add("   <div class='card-body'>\n")
-						graph = VisGraph("vis_network")
-						graph.node_add("host_" + host, host, icon)
-						self.show_host_graph_network(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-						html.add(graph.end(direction = "LR"))
-						html.add("   </div>\n")
-						html.add("   </div>\n")
-						html.add("  </div>\n")
-						html.add(" </div>\n")
-						html.add(" <div class='row'>\n")
-						html.add(self.show_host_table_disks(groups[group]["hosts"][host]["ansible_facts"]))
-						html.add(self.show_host_table_mounts(groups[group]["hosts"][host]["ansible_facts"]))
-						html.add("  <div class='col-12'>\n")
-						html.add("  <div class='card'>\n")
-						html.add("   <div class='card-header'>Disks-Graph<img class='float-right' src='assets/MaterialDesignIcons/harddisk.svg'></div>\n")
-						html.add("   <div class='card-body'>\n")
-						graph = VisGraph("vis_disks")
-						graph.node_add("host_" + host, host, icon)
-						self.show_host_graph_disks(graph, groups[group]["hosts"][host]["ansible_facts"], "host_" + host)
-						html.add(graph.end(direction = "UD"))
-						html.add("   </div>\n")
-						html.add("  </div>\n")
-						html.add("  </div>\n")
-						html.add(" </div>\n")
-					else:
-						if "msg" in groups[group]["hosts"][host]:
-							html.add(" <b>" + groups[group]["hosts"][host]["msg"].strip() + "</b>\n")
+	def show_host_table_memory_hist(self, facts, stamp, hostname):
+		html = ""
+		if "ansible_memory_mb" in facts:
+			html += bs_add("<canvas id='lcmemory' width='100%' height='20'></canvas>");
+			stamps = []
+			for host in inventory["hosts"]:
+				for timestamp in inventory["hosts"][host]:
+					if timestamp.isdigit() and timestamp != "0":
+						stamps.append(timestamp)
+			labels = []
+			datas = []
+			trange = (3600 * 12)
+			tsteps = 300
+			laststamp = int(stamp)
+			for timestamp in sorted(set(stamps)):
+				if stamp == "0" or int(timestamp) <= int(stamp):
+					labels.append("")
+			for section in ["nocache", "real", "swap"]:
+				last = 0
+				data = []
+				for timestamp in sorted(set(stamps)):
+					if hostname in inventory["hosts"] and timestamp in inventory["hosts"][hostname]:
+						if "ansible_facts" in inventory["hosts"][hostname][timestamp]:
+							if "ansible_memory_mb" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
+								if section in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_memory_mb"]:
+									if "used" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_memory_mb"][section]:
+										last = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_memory_mb"][section]["used"])
+					data.append(last)
+				datas.append(data)
+			html += self.show_chart("lcmemory", labels, datas, ["nocache", "real", "swap"])
+		return html
+
+
+	def show_host_table_memory(self, facts, stamp, hostname):
+		html = ""
+		if "ansible_memory_mb" in facts:
+			html += bs_col_begin("6")
+			html += bs_card_begin("Memory", "memory")
+			html += bs_row_begin()
+			for section in ["nocache", "real", "swap"]:
+				if section in facts["ansible_memory_mb"]:
+					html += bs_col_begin("4")
+					html += bs_add("<b>" + section.capitalize() + ":</b><br />")
+					html += bs_table_begin()
+					html += facts2rows(facts["ansible_memory_mb"][section], "", "", "MB", "right")
+					html += bs_table_end()
+					html += bs_col_end()
+			html += bs_row_end()
+			html += bs_card_end()
+			html += bs_col_end()
+		return html
+
+
+	def show_host_table_mounts(self, facts, stamp, hostname):
+		html = ""
+		if "ansible_mounts" not in facts:
+			return html
+		html += bs_col_begin("6")
+		html += bs_card_begin("Mounts", "folder-open")
+		html += bs_row_begin()
+		for mount in facts["ansible_mounts"]:
+			html += bs_col_begin("6")
+			html += bs_add("<b>Mount:</b><br />")
+			html += bs_table_begin()
+			html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
+			html += bs_table_end()
+			bs_add("<br />")
+			html += bs_col_end()
+		html += bs_row_end()
+		html += bs_card_end()
+		html += bs_col_end()
+		return html
+
+
+	def show_host_table_mounts_hist(self, facts, stamp, hostname):
+		html = ""
+		html += bs_add("<canvas id='lcmounts' width='100%' height='20'></canvas>");
+		stamps = []
+		for host in inventory["hosts"]:
+			for timestamp in inventory["hosts"][host]:
+				if timestamp.isdigit() and timestamp != "0":
+					stamps.append(timestamp)
+		labels = []
+		datas = []
+		units = []
+		trange = (3600 * 12)
+		tsteps = 300
+		laststamp = int(stamp)
+		for timestamp in sorted(set(stamps)):
+			if stamp == "0" or int(timestamp) <= int(stamp):
+				labels.append("")
+		mount_n = 0
+		for mount in facts["ansible_mounts"]:
+			units.append(mount["mount"])
+			last = 0
+			data = []
+			for timestamp in sorted(set(stamps)):
+				if hostname in inventory["hosts"] and timestamp in inventory["hosts"][hostname]:
+					if "ansible_facts" in inventory["hosts"][hostname][timestamp]:
+						if "ansible_mounts" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
+							if "size_available" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]:
+								value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
+								last = 100 - value
+				data.append(last)
+			datas.append(data)
+			mount_n += 1
+		html += self.show_chart("lcmounts", labels, datas, units)
+		return html
+
+
+	def show_host_table_network(self, facts):
+		html = ""
+		html += bs_col_begin("6")
+		html += bs_card_begin("Network", "net")
+		html += bs_row_begin()
+		html += bs_col_begin("6")
+		html += bs_add("<b>Hostname & Domain:</b><br />")
+		html += bs_table_begin()
+		html += facts2rows(facts, ["ansible_hostname", "ansible_domain", "ansible_fqdn"])
+		html += bs_table_end()
+		html += bs_col_end()
+		html += bs_col_begin("6")
+		html += bs_add("<b>DNS-Server:</b><br />")
+		html += bs_table_begin()
+		if "nameservers" in facts["ansible_dns"]:
+			for nameserver in facts["ansible_dns"]["nameservers"]:
+				html += bs_add("<tr>")
+				html += bs_add(" <td>DNS-Server: </td>")
+				html += bs_add(" <td>" + nameserver + "</td>")
+				html += bs_add("</tr>")
+		if "search" in facts["ansible_dns"]:
+			for search in facts["ansible_dns"]["search"]:
+				html += bs_add("<tr>")
+				html += bs_add(" <td>DNS-Search: </td>")
+				html += bs_add(" <td>" + search + "</td>")
+				html += bs_add("</tr>")
+		html += bs_table_end()
+		bs_add("<br />")
+		html += bs_add("<b>Default-Gateway:</b><br />")
+		html += bs_table_begin()
+		if "ansible_default_ipv4" in facts:
+			html += facts2rows(facts["ansible_default_ipv4"], ["gateway", "interface"])
+		html += bs_table_end()
+		html += bs_col_end()
+		html += bs_row_end()
+		html += bs_card_end()
+		html += bs_col_end()
+		return html
+
+
+	def show_history(self, stamp = "0",  hostname = ""):
+		links = ""
+		links = bs_add("<br /><canvas id='myAreaChart' width='100%' height='30'></canvas>")
+		stamps = []
+		for host in inventory["hosts"]:
+			for timestamp in inventory["hosts"][host]:
+				if timestamp.isdigit() and timestamp != "0":
+					stamps.append(timestamp)
+		labels = []
+		data = []
+		data2 = []
+		datas = []
+		trange = (3600 * 12)
+		tsteps = 600
+		laststamp = int(stamp)
+		if stamp == "0":
+			laststamp = int(time.time())
+		for timestamp in range(laststamp - trange, laststamp + tsteps, tsteps):
+			labels.append("")
+		if hostname != "":
+			last = 0
+			if hostname in inventory["hosts"]:
+				for timestamp in range(int(inventory["hosts"][hostname]["first"]), laststamp):
+					if str(timestamp) in inventory["hosts"][hostname]:
+						if "ansible_facts" in inventory["hosts"][hostname][str(timestamp)]:
+							last = 1
 						else:
-							html.add(" <b>UNKNOWN-ERROR</b>\n")
+							last = 0
+					if timestamp >= int(inventory["hosts"][hostname]["first"]) and timestamp % tsteps == 0:
+						data.append(last)
+			datas.append(data)
+			links += self.show_chart("myAreaChart", labels, datas)
+			links += bs_table_begin()
+			links += bs_add("<tr><td><a href='?host=" + hostname + "&stamp=0'>latest info</a></td></tr>")
+			for tstamp in inventory["hosts"][hostname]:
+				if tstamp.isdigit() and tstamp != "0":
+
+					if "ansible_facts" in inventory["hosts"][hostname][tstamp]:
+						stat = "OK"
+					else:
+						stat = "ERR"
+					sstamp = ""
+					if stamp == tstamp:
+						sstamp += "&lt;"
+					links += bs_add("<tr><td><a href='?host=" + hostname + "&stamp=" + tstamp + "'>" + datetime.fromtimestamp(int(tstamp)).strftime("%a %d. %b %Y %H:%M:%S") + "</a></td><td>" + stat + "</td><td>" + sstamp + "</td></tr>")
+			links += bs_table_end()
+			return links
+		else:
+			for timestamp in range(laststamp - trange, laststamp + tsteps, tsteps):
+				n = 0
+				n2 = 0
+				for host in inventory["hosts"]:
+					last = 0
+					last2 = 0
+					for hstamp in sorted(inventory["hosts"][host]):
+						if hstamp != "0" and hstamp.isdigit():
+							if int(timestamp) >= int(hstamp):
+								if "ansible_facts" in inventory["hosts"][host][hstamp]:
+									last = 1
+									last2 = 1
+								else:
+									last = 0
+					n += last
+					n2 += last2
+				data.append(n)
+				data2.append(n2)
+			datas.append(data)
+			datas.append(data2)
+			links += self.show_chart("myAreaChart", labels, datas)
+			links += bs_table_begin()
+			links += bs_add("<tr><td><a href='?stamp=0'>latest info</a></td></tr>")
+			for tstamp in sorted(set(stamps), reverse=True):
+				if stamp == tstamp:
+					links += bs_add("<tr><td><a href='?stamp=" + tstamp + "'>" + datetime.fromtimestamp(int(tstamp)).strftime("%a %d. %b %Y %H:%M:%S") + "</a>&lt;</td></tr>")
+				else:
+					links += bs_add("<tr><td><a href='?stamp=" + tstamp + "'>" + datetime.fromtimestamp(int(tstamp)).strftime("%a %d. %b %Y %H:%M:%S") + "</a></td></tr>")
+			links += bs_table_end()
+			return links
+
+
+	def show_hostdata(self, hostname, stamp = "0"):
+		links = self.show_history(stamp, hostname)
+		if stamp == "0":
+			html = HtmlPage("Visansible", "Host (" + hostname + ") <a href='/rescan?host=" + hostname + "'>[RESCAN]</a>", "latest info", links);
+		else:
+			html = HtmlPage("Visansible", "Host (" + hostname + ") <a href='/rescan?host=" + hostname + "'>[RESCAN]</a>", datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S") + "", links);
+		for host in inventory["hosts"]:
+			if hostname == host:
+				if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][stamp]:
+					osfamily = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_os_family"]
+					distribution = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_distribution"]
+					icon = osicons_get(osfamily, distribution)
+					## System ##
+					html.add(bs_row_begin())
+					html.add(self.show_host_table_general(inventory["hosts"][host][stamp]["ansible_facts"]))
+					html.add(bs_col_begin("6"))
+					html.add(bs_card_begin("History", "clock"))
+					html.add(bs_add("<b>Memory-Usage:</b>"))
+					html.add(self.show_host_table_memory_hist(inventory["hosts"][host][stamp]["ansible_facts"], stamp, hostname))
+					html.add(bs_add("<hr />"))
+					html.add(bs_add("<b>Disk-Usage:</b>"))
+					html.add(self.show_host_table_mounts_hist(inventory["hosts"][host][stamp]["ansible_facts"], stamp, hostname))
+					html.add(bs_card_end())
+					html.add(bs_col_end())
+					html.add(self.show_host_table_memory(inventory["hosts"][host][stamp]["ansible_facts"], stamp, hostname))
+					html.add(self.show_host_table_network(inventory["hosts"][host][stamp]["ansible_facts"]))
+					html.add(bs_row_end())
+					## Network ##
+					html.add(bs_row_begin())
+					html.add(self.show_host_table_ifaces(inventory["hosts"][host][stamp]["ansible_facts"]))
+					html.add(bs_row_end())
+					html.add(bs_row_begin())
+					html.add(self.show_host_table_ifaces(inventory["hosts"][host][stamp]["ansible_facts"]))
+					html.add(bs_col_begin("12"))
+					html.add(bs_card_begin("Network-Graph", "net"))
+					graph = VisGraph("vis_network")
+					graph.node_add("host_" + host, host, icon)
+					self.show_host_graph_network(graph, inventory["hosts"][host][stamp]["ansible_facts"], "host_" + host)
+					html.add(graph.end(direction = "UD"))
+					html.add(bs_card_end())
+					html.add(bs_col_end())
+					html.add(bs_row_end())
+					## Disks ##
+					html.add(bs_row_begin())
+					html.add(self.show_host_table_disks(inventory["hosts"][host][stamp]["ansible_facts"]))
+					html.add(self.show_host_table_mounts(inventory["hosts"][host][stamp]["ansible_facts"], stamp, hostname))
+					html.add(bs_col_begin("12"))
+					html.add(bs_card_begin("Disks-Graph", "harddisk"))
+					graph = VisGraph("vis_disks")
+					graph.node_add("host_" + host, host, icon)
+					self.show_host_graph_disks(graph, inventory["hosts"][host][stamp]["ansible_facts"], "host_" + host)
+					html.add(graph.end(direction = "UD"))
+					html.add(bs_card_end())
+					html.add(bs_col_end())
+					html.add(bs_row_end())
+				else:
+					if "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host][stamp]:
+						html.add("<b>" + inventory["hosts"][host][stamp]["msg"].strip() + "</b>\n")
+					else:
+						html.add("<b>UNKNOWN-ERROR</b>\n")
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -856,17 +938,26 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return
 
 
-	def show_hosts(self):
+	def show_hosts(self, stamp = "0"):
 		options = ["ansible_fqdn", "ansible_distribution", "ansible_architecture", "ansible_product_name", "ansible_product_serial"]
-		html = HtmlPage("Visansible", "Hosts");
-		html.add(" <div class='row'>\n")
-		html.add("  <div class='col-12'>\n")
-		html.add("<table class='table table-hover' width='90%'>\n")
-		for group in groups:
+		if stamp == "0":
+			html = HtmlPage("Visansible", "Hosts", "latest info", self.show_history(stamp));
+		else:
+			html = HtmlPage("Visansible", "Hosts", datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S"), self.show_history(stamp));
+		stamps = []
+		for host in inventory["hosts"]:
+			for timestamp in inventory["hosts"][host]:
+				if timestamp.isdigit() and timestamp != "0":
+					stamps.append(timestamp)
+		html.add(bs_row_begin())
+		html.add(bs_col_begin("12"))
+		html.add(bs_add("<table class='table table-hover' width='90%'>"))
+		for group in inventory["groups"]:
 			html.add("<tr>\n")
-			html.add(" <td colspan='" + str(len(options) + 3) + "'><h2>Group: " + group + "</h2></td>\n")
+			html.add(" <td colspan='" + str(len(options) + 4) + "'><h2>Group: " + group + "</h2><a href='/rescan?host=" + group + "'>[RESCAN]<a/></td>\n")
 			html.add("</tr>\n")
 			html.add("<tr>\n")
+			html.add(" <th>Stamp</th>\n")
 			html.add(" <th>Host</th>\n")
 			for option in options:
 				title = option.replace("ansible_", "").capitalize()
@@ -874,41 +965,56 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add(" <th width='10%'>Options</th>\n")
 			html.add(" <th width='10%'>Status</th>\n")
 			html.add("</tr>\n")
-			for host in groups[group]["hosts"]:
-				html.add("<tr>\n")
-				html.add(" <td width='10%'><a href='host?host=" + host + "'>" + host + "</a></td>\n")
-				for option in options:
-					if "ansible_facts" in groups[group]["hosts"][host] and option in groups[group]["hosts"][host]["ansible_facts"]:
-						value = str(groups[group]["hosts"][host]["ansible_facts"][option])
-						if option == "ansible_distribution":
-							html.add("<td width='10%'>")
-							osfamily = groups[group]["hosts"][host]["ansible_facts"]["ansible_os_family"]
-							distribution = groups[group]["hosts"][host]["ansible_facts"]["ansible_distribution"]
-							html.add("<img src='assets/MaterialDesignIcons/" + osicons_get(osfamily, distribution) + ".svg' />\n")
-						else:
-							html.add("<td>")
-						html.add(value)
-						html.add("</td>\n")
+			for host in inventory["hosts"]:
+				hoststamp = "0"
+				if group != inventory["hosts"][host]["group"]:
+					continue
+				if stamp != "0":
+					for timestamp in sorted(set(stamps)):
+						if int(stamp) >= int(timestamp) and timestamp in inventory["hosts"][host]:
+							hoststamp = timestamp
+				if stamp == "0" or int(stamp) >= int(inventory["hosts"][host]["first"]):
+					html.add("<tr>\n")
+					if stamp != "0":
+						html.add(" <td>" + datetime.fromtimestamp(int(hoststamp)).strftime("%a %d. %b %Y %H:%M:%S") + "</td>\n")
 					else:
-						html.add(" <td>---</td>\n")
-				if "options" in groups[group]["hosts"][host]:
-					html.add(" <td>" + ", ".join(groups[group]["hosts"][host]["options"]) + "</td>\n")
-				else:
-					html.add(" <td>---</td>\n")
-				if "msg" in groups[group]["hosts"][host]:
-					html.add(" <td>" + groups[group]["hosts"][host]["msg"].strip() + "</td>\n")
-				elif "ansible_facts" in groups[group]["hosts"][host]:
-
-
-					html.add(" <td>OK <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
-
-				else:
-					html.add(" <td>UNKNOWN-ERROR</td>\n")
-				html.add("</tr>\n")
-		html.add("</table>\n")
+						html.add(" <td>" + datetime.fromtimestamp(int(inventory["hosts"][host]["stamp"])).strftime("%a %d. %b %Y %H:%M:%S") + "</td>\n")
+					html.add(" <td width='10%'><a href='host?host=" + host + "'>" + host + "</a></td>\n")
+					if hoststamp in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][hoststamp]:
+						for option in options:
+							if "ansible_facts" in inventory["hosts"][host][hoststamp] and option in inventory["hosts"][host][hoststamp]["ansible_facts"]:
+								value = str(inventory["hosts"][host][hoststamp]["ansible_facts"][option])
+								if option == "ansible_distribution":
+									html.add("<td width='10%'>")
+									osfamily = inventory["hosts"][host][hoststamp]["ansible_facts"]["ansible_os_family"]
+									distribution = inventory["hosts"][host][hoststamp]["ansible_facts"]["ansible_distribution"]
+									html.add("<img src='assets/MaterialDesignIcons/" + osicons_get(osfamily, distribution) + ".svg' />\n")
+								else:
+									html.add("<td>")
+								html.add(value)
+								html.add("</td>\n")
+							else:
+								html.add(" <td>---</td>\n")
+						if "options" in inventory["hosts"][host]:
+							html.add(" <td>" + ", ".join(inventory["hosts"][host]["options"]) + "</td>\n")
+						else:
+							html.add(" <td>---</td>\n")
+						if stamp != "0":
+							html.add(" <td colspan='6' style='color: #00FF00;'>OK <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+					else:
+						if hoststamp in inventory["hosts"][host] and "msg" in inventory["hosts"][host][hoststamp]:
+							html.add(" <td colspan='6' style='color: #FF0000;'>" + inventory["hosts"][host][hoststamp]["msg"].strip() + "</td>\n")
+						else:
+							html.add(" <td colspan='6' style='color: #FF0000;'>UNKNOWN-ERROR</td>\n")
+						if stamp != "0":
+							html.add(" <td colspan='6' style='color: #FF0000;'>ERR <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+					if stamp == "0":
+						html.add(" <td>" + inventory["hosts"][host]["status"] + " " + datetime.fromtimestamp(int(inventory["hosts"][host]["last"])).strftime("%a %d. %b %Y %H:%M:%S") + " <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+					html.add("</tr>\n")
+		html.add(bs_table_end())
 		html.add("<br />\n")
-		html.add("  </div>\n")
-		html.add(" </div>\n")
+		html.add(bs_col_end())
+		html.add(bs_row_end())
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -917,13 +1023,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 	def show_inventory(self):
-		html = HtmlPage("Visansible", "Inventory-File");
-		html.add("<div class='row'>\n")
-		html.add("<div class='col-12'>\n")
+		html = HtmlPage("Visansible", "Inventory-File", "");
+		html.add(bs_row_begin())
+		html.add(bs_col_begin("12"))
 		inventory = open("inventory.cfg", "r").read()
 		html.add("<pre>" + inventory + "</pre>\n")
-		html.add("</div>\n")
-		html.add("</div>\n")
+		html.add(bs_col_end())
+		html.add(bs_row_end())
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -931,30 +1037,81 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return
 
 
-	def show_stats(self):
+	def show_chart(self, name, labels, datas, units = ["","","","","","","","",""], colors = ["#cb2121", "#830909", "#923e99", "#ae83d5", "#111111", "#050505", "#646464", "#747474", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888", "#999999", "#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]):
+		html = "\n"
+		html += "<!--chart-->\n"
+		html += "<script>\n"
+		html += "	Chart.defaults.global.defaultFontFamily = '-apple-system,system-ui,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,sans-serif';\n"
+		html += "	Chart.defaults.global.defaultFontColor = '#292b2c';\n"
+		html += "	var ctx = document.getElementById('" + name + "');\n"
+		html += "	var myLineChart = new Chart(ctx, {\n"
+		html += "		type: 'line',\n"
+		html += "		data: {labels: " + str(labels).replace(" ", "") + ",\n"
+		html += "		datasets: [\n"
+		dn = 0
+		for data in datas:
+			html += "			{type: 'line', pointRadius: 0, fill: false, lineTension: 0, borderWidth: 2, label: '" + units[dn] + "', BackgroundColor: '" + colors[dn] + "', borderColor: '" + colors[dn] + "', data: " + str(data).replace(" ", "") + "},\n"
+			dn += 1
+		html += "		],\n"
+		html += "		},\n"
+		html += "		options: {\n"
+		html += "			tooltips: {intersect: false, mode: 'index', callbacks: {\n"
+		html += "				label: function(tooltipItem, myData) {var label = myData.datasets[tooltipItem.datasetIndex].label || ''; if (label) {label += ': ';}; label += parseFloat(tooltipItem.value).toFixed(2); return label;}\n"
+		html += "			}},\n"
+		html += "			scales: {xAxes: [{distribution: 'series', ticks: {source: 'data', autoSkip: true}, gridLines: {lineWidth: 0}}], yAxes: [{ticks: {suggestedMin: 0}, scaleLabel: {display: false}, gridLines: {lineWidth: 1}}]},\n"
+		html += "			legend: {"
+		if units[0] == "":
+			html += "display: false"
+		else:
+			html += "display: true"
+		html += "}\n"
+		html += "		}\n"
+		html += "	});\n"
+		html += "</script>\n"
+		html += "<!--/chart-->\n"
+		html += "\n"
+		return html
+
+
+	def show_stats(self, stamp = "0"):
 		colors = ["#cb2121", "#830909", "#923e99", "#ae83d5", "#111111", "#050505", "#646464", "#747474", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888", "#999999", "#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]
 		options = ["ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_distribution", "ansible_kernel", "ansible_processor_count", "ansible_distribution_release", "ansible_virtualization_role", "ansible_virtualization_type", "ansible_pkg_mgr"]
-		html = HtmlPage("Visansible", "Stats");
+		stamps = []
+		for host in inventory["hosts"]:
+			for timestamp in inventory["hosts"][host]:
+				if timestamp.isdigit() and timestamp != "0":
+					stamps.append(timestamp)
 		stats = {}
 		for option in options:
 			stats[option] = {}
-		for group in groups:
-			for host in groups[group]["hosts"]:
+		for host in inventory["hosts"]:
+			hoststamp = stamp
+			if stamp != "0":
+				for timestamp in sorted(set(stamps)):
+					if int(stamp) >= int(timestamp) and timestamp in inventory["hosts"][host]:
+						hoststamp = timestamp
+			if stamp == "0" or int(stamp) >= int(inventory["hosts"][host]["first"]):
 				for option in options:
-					if option in groups[group]["hosts"][host]["ansible_facts"]:
-						value = groups[group]["hosts"][host]["ansible_facts"][option];
+					if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][hoststamp] and option in inventory["hosts"][host][hoststamp]["ansible_facts"]:
+						value = inventory["hosts"][host][hoststamp]["ansible_facts"][option];
 					else:
 						value = "UNKNOWN"
 					if value not in stats[option]:
 						stats[option][value] = 0
 					stats[option][value] += 1
-		html.add("<div class='row'>\n")
+		if stamp == "0":
+			html = HtmlPage("Visansible", "Stats", "latest info", self.show_history(stamp));
+		else:
+			html = HtmlPage("Visansible", "Stats", datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S"), self.show_history(stamp));
+		html.add(bs_row_begin())
 		for option in options:
-			html.add("<div class='col-4'>\n")
-			html.add("<div id='pieChart_" + option + "'></div>\n")
-			html.add("</div>\n")
-		html.add("</div>\n")
+			html.add(bs_col_begin("4"))
+			html.add(bs_add("<div id='pieChart_" + option + "'></div>"))
+			html.add(bs_col_end())
+		html.add(bs_row_end())
 		for option in options:
+			html.add("\n")
+			html.add("<!--chart-->\n")
 			html.add("<script>\n")
 			html.add("var pie = new d3pie('pieChart_" + option + "', {\n")
 			html.add("	'header': {\n")
@@ -1033,6 +1190,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add("	}\n")
 			html.add("});\n")
 			html.add("</script>\n")
+			html.add("<!--/chart-->\n")
+			html.add("\n")
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -1043,28 +1202,47 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	def do_GET(self):
 		print(self.path)
 		opts = {}
+		opts["stamp"] = "0"
 		if "?" in self.path:
 			for opt in self.path.split("?")[1].split("&"):
 				name = opt.split("=")[0]
 				value = opt.split("=")[1]
 				opts[name] = value
-
-
 		if self.path.startswith("/rescan"):
-			if "?" in self.path:
-				if "host" in opts:
-					command = ['ansible', '-i', 'inventory.cfg', opts["host"], '-m', 'setup', '--tree', 'facts']
-			else:
-				command = ['ansible', '-i', 'inventory.cfg', 'all', '-m', 'setup', '--tree', 'facts']
+			if "host" not in opts or opts["host"] == "":
+				opts["host"] = "all"
+			timestamp = int(time.time())
+			if not os.path.exists("facts"):
+				os.mkdir("facts")
+			if not os.path.exists("facts/hist_" + str(timestamp)):
+				os.mkdir("facts//hist_" + str(timestamp))
+			command = ['ansible', '-i', 'inventory.cfg', opts["host"], '-m', 'setup', '--tree', 'facts/hist_' + str(timestamp)]
 			result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-			html = HtmlPage("Visansible", "Rescan");
+			html = HtmlPage("Visansible", "Rescan", "");
 			html.add("<b>command:</b>")
 			html.add("<pre>")
 			html.add(" ".join(command))
 			html.add("</pre>")
+			inventory_read(timestamp)
+			errors = 0
+			for host in inventory["hosts"]:
+				if "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host]["0"]:
+					html.add("<b>error-msg:</b>")
+					html.add("<pre style='color: #FF0000;'>")
+					html.add(inventory["hosts"][host]["0"]["msg"])
+					html.add("</pre>")
+					errors = 2
+				os.system("cp -a facts/hist_" + str(timestamp) + "/" + host + " facts/" + host)
+			inventory_read()
 			if result.stderr.decode('utf-8') != "":
 				html.add("<b>stderr:</b>")
-				html.add("<pre>")
+				if "WARNING" in result.stderr.decode('utf-8'):
+					html.add("<pre style='color: #999900;'>")
+					if errors < 1:
+						errors = 1
+				else:
+					html.add("<pre style='color: #FF0000;'>")
+					errors = 2
 				html.add(result.stderr.decode('utf-8'))
 				html.add("</pre>")
 			if result.stdout.decode('utf-8') != "":
@@ -1072,30 +1250,42 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html.add("<pre>")
 				html.add(result.stdout.decode('utf-8'))
 				html.add("</pre>")
-			inventory_read()
+			if errors <= 1:
+				html.add("<script>\n")
+				if opts["host"] in inventory["hosts"]:
+					if errors == 1:
+						html.add(" setTimeout(function() {location.href = '/host?host=" + opts["host"] + "'}, 3000);\n")
+					else:
+						html.add(" setTimeout(function() {location.href = '/host?host=" + opts["host"] + "'}, 1000);\n")
+				else:
+					if errors == 1:
+						html.add(" setTimeout(function() {location.href = '/hosts'}, 3000);\n")
+					else:
+						html.add(" setTimeout(function() {location.href = '/hosts'}, 1000);\n")
+				html.add("</script>\n")
 			self.send_response(200)
 			self.send_header("Content-type", "text/html")
 			self.end_headers()
 			self.wfile.write(bytes(html.end(), "utf8"))
 			return
 		elif self.path.startswith("/hosts"):
-			self.show_hosts()
+			self.show_hosts(opts["stamp"])
 			return
 		elif self.path.startswith("/stats"):
-			self.show_stats()
+			self.show_stats(opts["stamp"])
 			return
 		elif self.path.startswith("/inventory"):
 			self.show_inventory()
 			return
 		elif self.path.startswith("/network"):
-			self.show_graph("network")
+			self.show_graph("network", opts["stamp"])
 			return
 		elif self.path.startswith("/groups"):
-			self.show_graph("group")
+			self.show_graph("group", opts["stamp"])
 			return
 		elif self.path.startswith("/host"):
 			if "host" in opts:
-				self.show_hostdata(opts["host"])
+				self.show_hostdata(opts["host"], opts["stamp"])
 			else:
 				self.show_hosts()
 			return
@@ -1148,10 +1338,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += prefix + str(part) + "<br />\n"
 			for part in element:
 				if type(part) is dict:
-					html += "<br />\n"
+					bs_add("<br />")
 					html += self.show_element(part, prefix + "&nbsp;&nbsp;&nbsp;")
 				elif type(part) is list:
-					html += "<br />\n"
+					bs_add("<br />")
 					html += self.show_element(part, prefix + "&nbsp;&nbsp;&nbsp;")
 		else:
 			for part in element:
@@ -1161,54 +1351,90 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += prefix + str(part) + " = " + str(element[part]) + "<br />\n"
 			for part in element:
 				if type(element[part]) is dict:
-					html += "<br />\n"
+					bs_add("<br />")
 					html += prefix + "<b>" + part + ":</b><br />\n"
 					html += self.show_element(element[part], prefix + "&nbsp;&nbsp;&nbsp;")
 				elif type(element[part]) is list:
-					html += "<br />\n"
+					bs_add("<br />")
 					html += prefix + "<b>" + part + ":</b><br />\n"
 					html += self.show_element(element[part], prefix + "&nbsp;&nbsp;&nbsp;")
 		return html;
 
 
-
-def inventory_read():
-	## get hosts and goups
+def inventory_read(timestamp = 0):
+	global inventory
+	global groups
 	hostslist = open("inventory.cfg", "r").read()
 	group = "NONE"
+	groups = {}
+	inventory = {}
+	inventory["groups"] = {}
+	inventory["hosts"] = {}
 	section = ""
+	hists = sorted(glob.glob("./facts/hist_*"), reverse=True)
 	misc = False
 	for line in hostslist.split("\n"):
 		if line.startswith("[") and ":" in line:
 			group = line.strip("[]").split(":")[0]
 			section = line.strip("[]").split(":")[1]
-			if group not in groups:
-				groups[group] = {}
-				groups[group]["hosts"] = {}
-				groups[group]["options"] = {}
+			if group not in inventory["groups"]:
+				inventory["groups"][group] = {}
+				inventory["groups"][group]["options"] = {}
 			misc = True
 		elif line.startswith("["):
 			group = line.strip("[]")
 			section = ""
-			if group not in groups:
-				groups[group] = {}
-				groups[group]["hosts"] = {}
-				groups[group]["options"] = {}
+			if group not in inventory["groups"]:
+				inventory["groups"][group] = {}
+				inventory["groups"][group]["options"] = {}
 			misc = False
 		elif misc == True and line.strip() != "":
 			name = line.split("=")[0].strip()
 			value = line.split("=")[1].strip()
-			groups[group]["options"][section] = {}
-			groups[group]["options"][section][name] = value
+			inventory["groups"][group]["options"][section] = {}
+			inventory["groups"][group]["options"][section][name] = value
 		elif misc == False and line.strip() != "":
 			host = line.split(" ")[0]
-			groups[group]["hosts"][host] = {}
 			host_options = line.split(" ")[1:]
-			if os.path.isfile("./facts/" + host):
-				with open("./facts/" + host) as json_file:
-					hostdata = json.load(json_file)
-					groups[group]["hosts"][host] = hostdata
-			groups[group]["hosts"][host]["options"] = host_options
+			inventory["hosts"][host] = {}
+			inventory["hosts"][host]["options"] = host_options
+			inventory["hosts"][host]["group"] = group
+			inventory["hosts"][host]["info"] = ""
+			inventory["hosts"][host]["stamp"] = "0"
+			inventory["hosts"][host]["last"] = "0"
+			inventory["hosts"][host]["first"] = "0"
+			inventory["hosts"][host]["status"] = "ERR"
+			if timestamp > 0:
+				if os.path.isfile("./facts/hist_" + str(timestamp) + "/" + host):
+					with open("./facts/hist_" + str(timestamp) + "/" + host) as json_file:
+						hostdata = json.load(json_file)
+						inventory["hosts"][host]["0"] = hostdata
+			else:
+				for filename in hists:
+					stamp = filename.split("_")[1]
+					if os.path.isfile("./facts/hist_" + str(stamp) + "/" + host):
+						with open("./facts/hist_" + str(stamp) + "/" + host) as json_file:
+							hostdata = json.load(json_file)
+							inventory["hosts"][host][str(stamp)] = hostdata
+							if inventory["hosts"][host]["last"] == "0":
+								inventory["hosts"][host]["last"] = str(stamp)
+							inventory["hosts"][host]["first"] = str(stamp)
+							if "0" not in inventory["hosts"][host]:
+								if "ansible_facts" in hostdata:
+									inventory["hosts"][host]["0"] = hostdata
+									inventory["hosts"][host]["stamp"] = str(stamp)
+									inventory["hosts"][host]["info"] += "&lt;"
+							if "ansible_facts" in hostdata:
+								inventory["hosts"][host]["info"] += "OK:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
+							else:
+								inventory["hosts"][host]["info"] += "ERR:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
+				if os.path.isfile("./facts/" + host):
+					with open("./facts/" + host) as json_file:
+						hostdata = json.load(json_file)
+						if "0" not in inventory["hosts"][host]:
+							inventory["hosts"][host]["0"] = hostdata
+						if "ansible_facts" in hostdata:
+							inventory["hosts"][host]["status"] = "OK"
 
 
 def run():
@@ -1220,7 +1446,7 @@ def run():
 
 
 inventory_read()
-print(json.dumps(groups, indent=4))
+#print(json.dumps(inventory, indent=4))
 run()
 
 

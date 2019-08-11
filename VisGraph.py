@@ -8,7 +8,8 @@ class VisGraph():
 	def __init__(self, name = "visjsgraph", height = "640px"):
 		self.name = name
 		self.edges = []
-		self.html = ""
+		self.html = "\n"
+		self.html += "<!--netgraph-->\n"
 		self.html += "<div id='" + self.name + "' style='height: " + height + ";'></div>\n"
 		self.html += "<script>\n"
 		self.html += "  var nodes = new vis.DataSet([\n"
@@ -69,6 +70,8 @@ class VisGraph():
 		self.html += "  	}\n";
 		self.html += "  });\n";
 		self.html += "</script>\n"
+		self.html += "<!--/netgraph-->\n"
+		self.html += "\n"
 		return self.html
 
 

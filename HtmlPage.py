@@ -108,7 +108,7 @@ body {
 		self.html += " <body>\n"
 		self.html += """  <div class="d-flex" id="wrapper">
     <div class="bg-light border-right" id="sidebar-wrapper">
-     <div class="sidebar-heading">Visansible</div>
+     <div class="sidebar-heading">""" + title + """</div>
      <div class="list-group list-group-flush">
       <a href="/hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
       <a href="/network" class="list-group-item list-group-item-action bg-light">Network</a>

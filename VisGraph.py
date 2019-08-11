@@ -63,10 +63,12 @@ class VisGraph():
 		self.html += "  	var name = nodeid.split('_').slice(1).join('_');\n";
 		self.html += "  	console.log(\"clicked nodes: \", nodeid);\n";
 		self.html += "  	console.log(\"clicked name: \", name);\n";
-		self.html += "  	if (nodeid.startsWith('host_')) {\n";
-		self.html += "  	 window.location.href = '/?host=' + name +  '&mode=network';\n";
+		self.html += "  	if (nodeid.startsWith('host_') && ! nodeid.includes('_ipv4_')) {\n";
+		self.html += "  	 window.location.href = '/host?host=' + name + '';\n";
+		self.html += "  	} else if (nodeid.startsWith('group_')) {\n";
+		self.html += "  	 window.location.href = '/hosts?group=' + name;\n";
 		self.html += "  	} else if (nodeid.startsWith('all')) {\n";
-		self.html += "  	 window.location.href = '/?mode=network';\n";
+		self.html += "  	 window.location.href = '/hosts';\n";
 		self.html += "  	}\n";
 		self.html += "  });\n";
 		self.html += "</script>\n"
@@ -76,7 +78,6 @@ class VisGraph():
 
 
 	def node_add(self, nid, label, icon = "desktop-tower", options = ""):
-
 		if options != "":
 			self.html += "    {id: '" + nid + "', label: '" + label + "', image:'assets/MaterialDesignIcons/" + icon + ".svg', shape:'image', " + options + "},\n"
 		else:

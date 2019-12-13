@@ -7,9 +7,12 @@ osicons = {
 	"Debian": "debian",
 	"RedHat": "hat-fedora",
 	"FreeBSD": "freebsd",
+	"OpenBSD": "openbsd",
 	"Suse": "opensuse",
 	"LibreELEC": "youtube-tv",
 	"OpenWrt": "router-wireless",
+	"Windows": "windows",
+	"Darwin": "apple",
 }
 
 

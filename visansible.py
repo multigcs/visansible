@@ -8,7 +8,10 @@ import os
 import time
 from datetime import datetime
 import glob
+import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import xml.etree.ElementTree as ET
+
 import subprocess
 from HtmlPage import *
 from VisGraph import *
@@ -38,7 +41,7 @@ def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
 			title = option.replace("ansible_", "").replace("_g", "").replace("_", " ").capitalize()
 		else:
 			title = option.replace("ansible_", "").replace("_", " ").capitalize()
-		if option in facts:
+		if type(facts) is dict and option in facts:
 			value = str(facts[option])
 			html += hprefix + "<tr><td>" + offset + title + ": </td><td align='" + align + "'>"
 			if option.endswith("_mb"):
@@ -251,6 +254,35 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					else:
 						graph.edge_add(parentnode, parentnode + "_iface_" + device)
 
+		## Windows ##
+		if "ansible_interfaces" in facts and type(facts["ansible_interfaces"]) is list:
+			## default_gateway
+			for iface in facts["ansible_interfaces"]:
+				if type(iface) is dict:
+					if "interface_name" in iface:
+						device = iface["interface_name"]
+						if "macaddress" in iface:
+							macaddress = iface["macaddress"]
+						else:
+							macaddress = ""
+						if simple == False:
+							graph.node_add(parentnode + "_iface_" + device, device + "\\n" + macaddress, "port")
+							graph.edge_add(parentnode, parentnode + "_iface_" + device)
+		if "ansible_ip_addresses" in facts:
+			for address in facts["ansible_ip_addresses"]:
+				if ":" in address:
+					if simple == False:
+						graph.node_add(parentnode + "_ipv6_" + address, address, "ipv6")
+						graph.edge_add(parentnode, parentnode + "_ipv6_" + address)
+				else:
+					graph.node_add(parentnode + "_ipv4_" + address, address, "ipv4")
+					graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
+
+					network = ".".join(address.split(".")[:3]) + ".0"
+					graph.node_add("network_" + network, network, "net");
+					graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
+
+
 
 	def show_host_graph_disks(self, graph, facts, parentnode):
 		if "ansible_devices" not in facts:
@@ -410,6 +442,32 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html += bs_row_end()
 				html += bs_card_end()
 				html += bs_col_end()
+		## Windows ##
+		if "ansible_interfaces" in facts and type(facts["ansible_interfaces"]) is list:
+			for iface in facts["ansible_interfaces"]:
+				if type(iface) is dict:
+					html += bs_col_begin("6")
+					html += bs_card_begin("Network-Interface: ", "port")
+					html += bs_row_begin()
+					html += bs_col_begin("6")
+					html += bs_add("<b>Interface:</b>")
+					html += bs_table_begin()
+					html += facts2rows(iface)
+					html += bs_table_end()
+					html += bs_col_end()
+					html += bs_col_begin("6")
+					html += "----"
+					html += bs_col_end()
+					html += bs_row_end()
+					html += bs_card_end()
+					html += bs_col_end()
+		if "ansible_ip_addresses" in facts:
+			html += bs_col_begin("6")
+			html += bs_card_begin("IP-Addresses: ", "port")
+			for address in facts["ansible_ip_addresses"]:
+				html += address + "<br />"
+			html += bs_card_end()
+			html += bs_col_end()
 		return html
 
 
@@ -714,6 +772,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 	def show_host_table_mounts_hist(self, facts, stamp, hostname):
 		html = ""
+		if "ansible_mounts" not in facts:
+			return html
 		html += bs_add("<canvas id='lcmounts' width='100%' height='20'></canvas>");
 		stamps = []
 		for host in inventory["hosts"]:
@@ -738,9 +798,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				if hostname in inventory["hosts"] and timestamp in inventory["hosts"][hostname]:
 					if "ansible_facts" in inventory["hosts"][hostname][timestamp]:
 						if "ansible_mounts" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
-							if "size_available" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]:
-								value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
-								last = 100 - value
+							if mount_n < len(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"]):
+								if "size_available" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]:
+									value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
+									last = 100 - value
 				data.append(last)
 			datas.append(data)
 			mount_n += 1
@@ -762,18 +823,19 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		html += bs_col_begin("6")
 		html += bs_add("<b>DNS-Server:</b><br />")
 		html += bs_table_begin()
-		if "nameservers" in facts["ansible_dns"]:
-			for nameserver in facts["ansible_dns"]["nameservers"]:
-				html += bs_add("<tr>")
-				html += bs_add(" <td>DNS-Server: </td>")
-				html += bs_add(" <td>" + nameserver + "</td>")
-				html += bs_add("</tr>")
-		if "search" in facts["ansible_dns"]:
-			for search in facts["ansible_dns"]["search"]:
-				html += bs_add("<tr>")
-				html += bs_add(" <td>DNS-Search: </td>")
-				html += bs_add(" <td>" + search + "</td>")
-				html += bs_add("</tr>")
+		if "ansible_dns" in facts:
+			if "nameservers" in facts["ansible_dns"]:
+				for nameserver in facts["ansible_dns"]["nameservers"]:
+					html += bs_add("<tr>")
+					html += bs_add(" <td>DNS-Server: </td>")
+					html += bs_add(" <td>" + nameserver + "</td>")
+					html += bs_add("</tr>")
+			if "search" in facts["ansible_dns"]:
+				for search in facts["ansible_dns"]["search"]:
+					html += bs_add("<tr>")
+					html += bs_add(" <td>DNS-Search: </td>")
+					html += bs_add(" <td>" + search + "</td>")
+					html += bs_add("</tr>")
 		html += bs_table_end()
 		bs_add("<br />")
 		html += bs_add("<b>Default-Gateway:</b><br />")
@@ -901,7 +963,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add(self.show_host_table_ifaces(inventory["hosts"][host][stamp]["ansible_facts"]))
 			html.add(bs_row_end())
 			html.add(bs_row_begin())
-			html.add(self.show_host_table_ifaces(inventory["hosts"][host][stamp]["ansible_facts"]))
 			html.add(bs_col_begin("12"))
 			html.add(bs_card_begin("Network-Graph", "net"))
 			graph = VisGraph("vis_network")
@@ -1001,6 +1062,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html.add("</tr>\n")
 				for host in inventory["hosts"]:
 					hoststamp = "0"
+					searchinfo = ""
 					if group not in inventory["hosts"][host]["groups"]:
 						continue
 					if search != "":
@@ -1009,9 +1071,20 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							facts = inventory["hosts"][host]["0"]["ansible_facts"]
 							match = True
 							for psearch in search.split(" "):
-								match2 = self.search_element(facts, psearch)
-								if match2 == False:
+								matches = {}
+								res, matches = self.search_element(facts, psearch, "", matches)
+								if res == False:
 									match = False
+								else:
+									rank = 0
+									rank2 = 0
+									searchinfo += psearch + ":("
+									for path in matches:
+										searchinfo += path.lstrip("/") + "(" + str(matches[path][0]) + ")=" + self.matchmark(matches[path][1], psearch, "#FFABAB") + ", "
+										if rank < matches[path][0]:
+											rank = matches[path][0]
+										rank2 += 1
+									searchinfo += ") " + str(rank + rank2) + " <br />"
 						if match == False:
 							continue
 					if stamp != "0":
@@ -1056,10 +1129,419 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if stamp == "0":
 							html.add(" <td>" + inventory["hosts"][host]["status"] + " " + datetime.fromtimestamp(int(inventory["hosts"][host]["last"])).strftime("%a %d. %b %Y %H:%M:%S") + " <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						html.add("</tr>\n")
+						if searchinfo != "":
+							html.add("<tr><td colspan='9' style='color: #999999;'>")
+							html.add(searchinfo)
+							html.add("</td></tr>\n")
+
+	
 		html.add(bs_table_end())
 		html.add("<br />\n")
 		html.add(bs_col_end())
 		html.add(bs_row_end())
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes(html.end(), "utf8"))
+		return
+
+
+	def load_ovs(self):
+		bridges = {}
+		alltags = []
+		bridge = ""
+		port = ""
+		ovsshow = os.popen("ovs-vsctl show").read()
+		for line in ovsshow.split("\n"):
+			if line.strip().startswith("Bridge"):
+				bridge = line.split()[1].strip("\"")
+				port = ""
+				bridges[bridge] = {}
+			elif line.strip().startswith("Port"):
+				port = line.split()[1].strip("\"")
+				bridges[bridge][port] = {}
+				bridges[bridge][port]["tag"] = ""
+				bridges[bridge][port]["trunks"] = []
+				bridges[bridge][port]["vlan_mode"] = ilink = os.popen("ovs-vsctl --columns=vlan_mode list port " + port).read().split()[2].replace("[]", "access/trunk")
+			elif line.strip().startswith("Interface"):
+				interface = line.split()[1].strip("\"")
+				bridges[bridge][port]["interface"] = interface
+				ilink = os.popen("ovs-vsctl --columns=external_ids find interface name=" + interface).read()
+				for part in ilink.split(":", 1)[1].strip().strip("{}").split(","):
+					if "=" in part:
+						name = part.strip().split("=")[0].strip().strip("\"")
+						value = part.strip().split("=")[1].strip().strip("\"")
+						bridges[bridge][port][name] = value
+				if "vm-id" in bridges[bridge][port] and "iface-id" in bridges[bridge][port]:
+					bridges[bridge][port]["vm-name"] = os.popen("virsh dominfo " + bridges[bridge][port]["vm-id"] + " | grep '^Name:'").read().split()[1]
+			elif line.strip().startswith("type:"):
+				itype = line.split()[1].strip("\"")
+				bridges[bridge][port]["type"] = itype
+				bridges[bridge][port]["mac"] = "-----"
+				ifconfig = os.popen("ifconfig " + interface).read()
+				for iline in ifconfig.split("\n"):
+					if iline.strip().startswith("inet "):
+						bridges[bridge][port]["ip"] = iline.strip().split()[1]
+					elif iline.strip().startswith("ether "):
+						bridges[bridge][port]["mac"] = iline.strip().split()[1]
+			elif line.strip().startswith("tag:"):
+				itag = line.split()[1].strip("\"")
+				bridges[bridge][port]["tag"] = itag
+			elif line.strip().startswith("trunks:"):
+				trunks = line.split(":", 1)[1].strip().strip("[]").split(",")
+				for trunk in trunks:
+					bridges[bridge][port]["trunks"].append(trunk.strip())
+		for bridge in bridges:
+			for port in bridges[bridge]:
+				if bridges[bridge][port]["tag"] != "":
+					alltags.append(int(bridges[bridge][port]["tag"]))
+				for trunk in bridges[bridge][port]["trunks"]:
+					alltags.append(int(trunk))
+		alltags = set(alltags)
+		return bridges, alltags
+
+
+	def show_ovs(self, setport = "", settag = "", settrunk = "", vmod = ""):
+		html = HtmlPage("vNetwork", "OVS-Overview", "");
+		html.add("<div class='modal fade' id='vlanModal' tabindex='-1' role='dialog' aria-labelledby='vlanModalLabel' aria-hidden='true'>\n")
+		html.add("  <div class='modal-dialog' role='document'>\n")
+		html.add("    <div class='modal-content'>\n")
+		html.add("      <div class='modal-header'>\n")
+		html.add("        <h5 class='modal-title' id='vlanModalLabel'>Select Tag-Mode: <input id='vlanModalTag' type='text'> -&gt; <b id='vlanModalPort'>-1</b></h5>\n")
+		html.add("        <button type='button' class='close' data-dismiss='modal' aria-label='Close'><span aria-hidden='true'>&times;</span></button>\n")
+		html.add("      </div>\n")
+		html.add("      <div class='modal-footer'>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModalPort').html() + '&trunk=' + $('#vlanModalTag').val() + '';\" type='button' class='btn btn-primary' data-dismiss='modal'>Tagged</button>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModalPort').html() + '&tag=' + $('#vlanModalTag').val() + '';\" type='button' class='btn btn-primary' data-dismiss='modal'>Untagged</button>\n")
+		html.add("      </div>\n")
+		html.add("    </div>\n")
+		html.add("  </div>\n")
+		html.add("</div>\n")
+		html.add("<div class='modal fade' id='vlanModeModal' tabindex='-1' role='dialog' aria-labelledby='vlanModeModalLabel' aria-hidden='true'>\n")
+		html.add("  <div class='modal-dialog' role='document'>\n")
+		html.add("    <div class='modal-content'>\n")
+		html.add("      <div class='modal-header'>\n")
+		html.add("        <h5 class='modal-title' id='vlanModeModalLabel'>Select VLAN-Mode: <b id='vlanModeModalPort'>-1</b></h5>\n")
+		html.add("        <button type='button' class='close' data-dismiss='modal' aria-label='Close'><span aria-hidden='true'>&times;</span></button>\n")
+		html.add("      </div>\n")
+		html.add("      <div class='modal-footer'>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModeModalPort').html() + '&vmode=access';\" type='button' class='btn btn-primary' data-dismiss='modal'>Access</button>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModeModalPort').html() + '&vmode=dot1q-tunnel';\" type='button' class='btn btn-primary' data-dismiss='modal'>Dot1q-Tunnel</button>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModeModalPort').html() + '&vmode=native-tagged';\" type='button' class='btn btn-primary' data-dismiss='modal'>Native-Tagged</button>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModeModalPort').html() + '&vmode=native-untagged';\" type='button' class='btn btn-primary' data-dismiss='modal'>native-untagged</button>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModeModalPort').html() + '&vmode=trunk';\" type='button' class='btn btn-primary' data-dismiss='modal'>Trunk</button>\n")
+		html.add("        <button onClick=\"location.href='?port=' + $('#vlanModeModalPort').html() + '&vmode=[]';\" type='button' class='btn btn-primary' data-dismiss='modal'>access/trunk</button>\n")
+		html.add("      </div>\n")
+		html.add("    </div>\n")
+		html.add("  </div>\n")
+		html.add("</div>\n")
+		graph = VisGraph("visgraph", "800px")
+		bridges, alltags = self.load_ovs()
+		if setport != "" and (settag != "" or settrunk != "" or vmod != ""):
+			if settag != "":
+				for bridge in bridges:
+					if setport in bridges[bridge]:
+						if str(settag) == str(bridges[bridge][setport]["tag"]):
+							os.system("ovs-vsctl remove port " + setport + " tag " + settag)
+						else:
+							os.system("ovs-vsctl set port " + setport + " tag=" + settag)
+			elif settrunk != "":
+				new_trunks = []
+				for bridge in bridges:
+					if setport in bridges[bridge]:
+						if settrunk in bridges[bridge][setport]["trunks"]:
+							os.system("ovs-vsctl remove port " + setport + " trunk " + settrunk)
+						else:
+							bridges[bridge][setport]["trunks"].append(settrunk)
+							os.system("ovs-vsctl set port " + setport + " trunk=" + ",".join(bridges[bridge][setport]["trunks"]))
+			elif vmod != "":
+				os.system("ovs-vsctl set port " + setport + " vlan_mode=" + vmod)
+			bridges, alltags = self.load_ovs()
+		html.add(bs_row_begin())
+		for bridge in bridges:
+			html.add(bs_col_begin("12"))
+			html.add(bs_card_begin("Bridge: " + bridge, "net"))
+			html.add(bs_row_begin())
+			html.add(bs_col_begin("12"))
+			html.add("<table class='table-striped' width='100%' border='0'>\n")
+			html.add("<tr>\n")
+			html.add(" <th colspan='3'>Switch</th>\n")
+			html.add(" <th colspan='5'>Target</th>\n")
+			html.add(" <th colspan='" + str(len(alltags) + 2) + "'>VLANs</th>\n")
+			html.add(" <th></th>\n")
+			html.add(" </tr>\n")
+			html.add("<tr>\n")
+			html.add(" <th width='160px'>Port</th>\n")
+			html.add(" <th width='120px'>VlanMode</th>\n")
+			html.add(" <th width='70px'>Tag</th>\n")
+			html.add(" <th width='90px'>Trunks</th>\n")
+			html.add(" <th width='100px'>Type</th>\n")
+			html.add(" <th width='120px'>Host</th>\n")
+			html.add(" <th width='70px'>Iface</th>\n")
+			html.add(" <th width='160px'>MAC</th>\n")
+			for tag in sorted(alltags):
+				html.add(" <th width='50px'>&nbsp;&nbsp;" + str(tag) + "</th>\n")
+			html.add(" <th width='50px'>&nbsp;&nbsp;NEW</th>\n")
+			html.add(" <th></th>\n")
+			html.add(" <th></th>\n")
+			html.add(" </tr>\n")
+			for port in bridges[bridge]:
+				html.add("<tr>\n")
+				html.add(" <td width='150px'>\n")
+				html.add("<img src='assets/MaterialDesignIcons/port.svg' />")
+				html.add(port)
+				html.add(" </td>\n")
+				html.add(" <td onClick=\"$('#vlanModeModalPort').html('" + str(port) + "')\" data-toggle='modal' data-target='#vlanModeModal'>" + bridges[bridge][port]["vlan_mode"] + "</td>")
+				html.add(" <td>" + bridges[bridge][port]["tag"] + "</td>")
+				html.add(" <td>" + ",".join(bridges[bridge][port]["trunks"]) + "</td>")
+				html.add(" <td>\n")
+				if "vm-id" in bridges[bridge][port] and "iface-id" in bridges[bridge][port]:
+					html.add("<img src='assets/MaterialDesignIcons/monitor.svg' />&nbsp;libvirt")
+				elif "container_id" in bridges[bridge][port] and "container_iface" in bridges[bridge][port]:
+					html.add("<img src='assets/MaterialDesignIcons/docker.svg' />&nbsp;docker")
+				elif "type" in bridges[bridge][port] and bridges[bridge][port]["type"] == "internal":
+					html.add("<img src='assets/MaterialDesignIcons/desktop-tower-monitor.svg' />&nbsp;internal")
+				html.add(" </td>\n")
+				if "vm-id" in bridges[bridge][port] and "iface-id" in bridges[bridge][port]:
+					html.add(" <td><a href='/vhost?host=" + bridges[bridge][port]["vm-name"] + "'>" + bridges[bridge][port]["vm-name"] + "</a></td>")
+					html.add(" <td></td>")
+					html.add(" <td>" + bridges[bridge][port]["attached-mac"] + "</td>")
+				elif "container_id" in bridges[bridge][port] and "container_iface" in bridges[bridge][port]:
+					html.add(" <td><a href='/vhost?host=" + bridges[bridge][port]["container_id"] + "'>" + bridges[bridge][port]["container_id"] + "</a></td>")
+					html.add(" <td>" + bridges[bridge][port]["container_iface"] + "</td>")
+					html.add(" <td></td>")
+				elif "type" in bridges[bridge][port] and bridges[bridge][port]["type"] == "internal":
+					html.add(" <td>LOCALHOST</td>")
+					html.add(" <td>" + bridges[bridge][port]["interface"] + "</td>")
+					if "mac" in bridges[bridge][port]:
+						html.add(" <td>" + bridges[bridge][port]["mac"] + "</td>")
+					else:
+						html.add(" <td></td>")
+				else:
+					html.add(" <td></td>")
+					html.add(" <td></td>")
+					html.add(" <td></td>")
+				for tag in sorted(alltags):
+					html.add(" <td>\n")
+					if str(tag) == bridges[bridge][port]["tag"] and str(tag) in bridges[bridge][port]["trunks"]:
+						html.add("<img onClick=\"$('#vlanModalTag').val('" + str(tag) + "'); $('#vlanModalPort').html('" + str(port) + "')\" data-toggle='modal' data-target='#vlanModal' src='assets/MaterialDesignIcons/vline-con3.svg' />M")
+					elif str(tag) in bridges[bridge][port]["trunks"]:
+						html.add("<img onClick=\"$('#vlanModalTag').val('" + str(tag) + "'); $('#vlanModalPort').html('" + str(port) + "')\" data-toggle='modal' data-target='#vlanModal' src='assets/MaterialDesignIcons/vline-con2.svg' />T")
+					elif str(tag) == bridges[bridge][port]["tag"]:
+						html.add("<img onClick=\"$('#vlanModalTag').val('" + str(tag) + "'); $('#vlanModalPort').html('" + str(port) + "')\" data-toggle='modal' data-target='#vlanModal' src='assets/MaterialDesignIcons/vline-con1.svg' />U")
+					else:
+						html.add("<img onClick=\"$('#vlanModalTag').val('" + str(tag) + "'); $('#vlanModalPort').html('" + str(port) + "')\" data-toggle='modal' data-target='#vlanModal' src='assets/MaterialDesignIcons/vline.svg' />")
+					html.add(" </td>\n")
+
+				html.add(" <td>")
+				html.add("<img onClick=\"$('#vlanModalTag').val(100); $('#vlanModalPort').html('" + str(port) + "')\" data-toggle='modal' data-target='#vlanModal' src='assets/MaterialDesignIcons/vline.svg' />")
+				html.add(" <td>\n")
+
+				html.add(" <td></td>")
+				html.add(" </tr>\n")
+			html.add("</table>\n")
+			html.add(bs_col_end())
+			html.add(bs_row_end())
+			html.add(bs_card_end())
+			html.add(bs_col_end())
+		html.add(bs_col_begin("12"))
+		html.add(bs_card_begin("vCables", "net"))
+		html.add(bs_row_begin())
+		html.add(bs_col_begin("12"))
+		for bridge in bridges:
+			graph.node_add("bridge_" + bridge, bridge, "net")
+			for port in bridges[bridge]:
+				if "vm-id" in bridges[bridge][port] and "iface-id" in bridges[bridge][port]:
+					host = bridges[bridge][port]["vm-name"]
+					graph.node_add("host_" + host, host, "monitor")
+					graph.edge_add("host_" + host + "_port_" + port, "host_" + host)
+				elif "container_id" in bridges[bridge][port] and "container_iface" in bridges[bridge][port]:
+					host = bridges[bridge][port]["container_id"]
+					iface = bridges[bridge][port]["container_iface"]
+					graph.node_add("host_" + host, host, "docker")
+					graph.edge_add("host_" + host + "_port_" + port, "host_" + host)
+				elif "type" in bridges[bridge][port] and bridges[bridge][port]["type"] == "internal":
+					host = "LOCALHOST"
+					graph.node_add("host_" + host, host, "desktop-tower-monitor")
+					graph.edge_add("host_" + host + "_port_" + port, "host_" + host)
+				tag = bridges[bridge][port]["tag"]
+				trunks = ",".join(bridges[bridge][port]["trunks"])
+				graph.node_add("host_" + host + "_port_" + port, port + "\\n" + tag + "\\nTrunks:" + trunks, "port")
+				graph.edge_add("bridge_" + bridge, "host_" + host + "_port_" + port)
+		html.add(graph.end())
+		html.add(bs_col_end())
+		html.add(bs_row_end())
+		html.add(bs_card_end())
+		html.add(bs_col_end())
+		html.add(bs_row_end())
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes(html.end(), "utf8"))
+		return
+
+
+	def show_vhost(self, host = ""):
+		html = HtmlPage("vNetwork", "vHost-Setup: " + host, "");
+
+		hosts = {}
+		hostfiles = {}
+		for hostfile in glob.glob("/usr/src/testnetz/hosts/*.json"):
+			with open(hostfile) as json_file:
+				hostdata = json.load(json_file)
+				hosts[hostdata["hostname"]] = hostdata
+				hostfiles[hostdata["hostname"]] = hostfile
+
+		html.add(bs_row_begin())
+
+		html.add(bs_col_begin("6"))
+		html.add(bs_card_begin("Host: " + hosts[host]["hostname"] + "." + hosts[host]["domainname"] + ""))
+		html.add(bs_row_begin())
+		html.add(bs_col_begin("6"))
+		html.add("<table>")
+		for option in ["hostname", "domainname", "os", "target", "memory", "vcpu", "iso", "dockerfile", "image"]:
+			value = ""
+			if option in hosts[host]:
+				value = str(hosts[host][option])
+			html.add("<tr><td>" + option.capitalize() + ": </td><td><input id='inp_" + option + "' type='text' value='" + value + "'></td></tr>")
+		html.add("</table>")
+		html.add("<br />")
+		html.add(bs_col_end())
+
+		html.add(bs_col_begin("6"))
+		html.add("<table>")
+		html.add("<tr>")
+		html.add(" <td>Nameservers: </td><td><input id='inp_nameservers' type='text' value='" + ", ".join(hosts[host]["network"]["nameservers"]) + "'></td>")
+		html.add("</tr>")
+		html.add("<tr>")
+		html.add(" <td>Default-Gateway: </td><td><input id='inp_gateway' type='text' value='" + hosts[host]["network"]["gateway"] + "'></td>")
+		html.add("</tr>")
+		html.add("</table>")
+		html.add("<br />")
+		html.add(bs_col_end())
+
+		html.add(bs_row_end())
+		html.add(bs_card_end())
+		html.add(bs_col_end())
+
+		html.add(bs_col_begin("6"))
+		html.add(bs_card_begin("Guest-Info"))
+		html.add(bs_row_begin())
+		html.add(bs_col_begin("6"))
+		status = os.popen("cd /usr/src/testnetz ; python3 init.py -i " + hostfiles[host]).read()
+		for line in status.split("\n"):
+			if line.startswith("State:") or "Up" in line:
+				html.add("<b>" + line + "</b><br />")
+			elif line.startswith("UUID") or line.startswith("OS Type") or line.startswith("CPU") or line.startswith("Used memory"):
+				html.add(line + "<br />")
+		html.add(bs_col_end())
+		html.add(bs_row_end())
+		html.add(bs_card_end())
+		html.add(bs_col_end())
+
+
+
+
+		for interface in hosts[host]["network"]["interfaces"]:
+			html.add(bs_col_begin("6"))
+			html.add(bs_card_begin("Network-Interface: " + interface))
+			html.add(bs_row_begin())
+			html.add(bs_col_begin("6"))
+			html.add(bs_add("<b>Interface:</b>"))
+			html.add(bs_table_begin())
+			html.add("<tr>")
+			html.add(" <td>Bridge: </td><td><input id='inp_iface_" + interface + "_bridge' type='text' value='" + hosts[host]["network"]["interfaces"][interface]["bridge"] + "'></td>")
+			html.add("</tr>")
+			html.add("<tr>")
+			html.add(" <td>HWaddress: </td><td><input id='inp_iface_" + interface + "_hwaddr' type='text' value='" + hosts[host]["network"]["interfaces"][interface]["hwaddr"] + "'></td>")
+			html.add("</tr>")
+			html.add(bs_table_end())
+			html.add(bs_col_end())
+			html.add(bs_col_begin("6"))
+			ipv4_n = 0
+			for ipv4 in hosts[host]["network"]["interfaces"][interface]["ipv4"]:
+				html.add(bs_add("<b>IPv4:</b>"))
+				html.add(bs_table_begin())
+				html.add("<tr>")
+				html.add(" <td>Address: </td><td><input id='inp_iface_" + interface + "_ipv4_" + str(ipv4_n) + "_address' type='text' value='" + ipv4["address"] + "'></td>")
+				html.add("</tr>")
+				html.add("<tr>")
+				html.add(" <td>Netmask: </td><td><input id='inp_iface_" + interface + "_ipv4_" + str(ipv4_n) + "_netmask' type='text' value='" + ipv4["netmask"] + "'></td>")
+				html.add("</tr>")
+				html.add(bs_table_end())
+				html.add("<br />")
+				ipv4_n += 1
+			html.add(bs_col_end())
+			html.add(bs_row_end())
+			html.add(bs_card_end())
+			html.add(bs_col_end())
+
+
+
+
+		for disk in hosts[host]["disks"]:
+			html.add(bs_col_begin("6"))
+			html.add(bs_card_begin("Disk: " + disk))
+			html.add(bs_row_begin())
+			html.add(bs_col_begin("6"))
+			html.add(bs_add("<b>Disk:</b>"))
+			html.add(bs_table_begin())
+			if "image" not in hosts[host]["disks"][disk]:
+				hosts[host]["disks"][disk]["image"] = ""
+			html.add("<tr>")
+			html.add(" <td>Size: </td><td><input id='inp_disk_" + disk + "_size' type='text' value='" + hosts[host]["disks"][disk]["size"] + "'></td>")
+			html.add("</tr>")
+			html.add("<tr>")
+			html.add(" <td>Image: </td><td><input id='inp_disk_" + disk + "_image' type='text' value='" + hosts[host]["disks"][disk]["image"] + "'></td>")
+			html.add("</tr>")
+			html.add(bs_table_end())
+			html.add(bs_col_end())
+			html.add(bs_col_begin("6"))
+#			for partition in hosts[host]["disks"][disk]["partitions"]:
+#				html.add(bs_add("<b>IPv4:</b>"))
+#				html.add(bs_table_begin())
+#				html.add("<tr>")
+#				html.add(" <td>Address: </td><td>" + ipv4["address"] + "</td>")
+#				html.add("</tr>")
+#				html.add("<tr>")
+#				html.add(" <td>Netmask: </td><td>" + ipv4["netmask"] + "</td>")
+#				html.add("</tr>")
+#				html.add(bs_table_end())
+#				html.add("<br />")
+			html.add(bs_col_end())
+			html.add(bs_row_end())
+			html.add(bs_card_end())
+			html.add(bs_col_end())
+
+
+		for user in hosts[host]["users"]:
+			html.add(bs_col_begin("6"))
+			html.add(bs_card_begin("User: " + user))
+			html.add(bs_row_begin())
+			html.add(bs_col_begin("12"))
+			html.add(bs_add("<b>User:</b>"))
+			html.add(bs_table_begin())
+			html.add("<tr>")
+			if "password" not in hosts[host]["users"][user]:
+				hosts[host]["users"][user]["password"] = ""
+			if "sshpubkey" not in hosts[host]["users"][user]:
+				hosts[host]["users"][user]["sshpubkey"] = ""
+			html.add("<tr>")
+			html.add(" <td>Password: </td><td><input id='inp_user_" + user + "_password' type='text' type='text' value='" + hosts[host]["users"][user]["password"] + "'></td>")
+			html.add("</tr>")
+			html.add("<tr>")
+			html.add(" <td>SSH-Pubkey: </td><td><input id='inp_user_" + user + "_password' type='text' value='" + hosts[host]["users"][user]["sshpubkey"] + "'></td>")
+			html.add("</tr>")
+			html.add("</tr>")
+			html.add(bs_table_end())
+			html.add(bs_col_end())
+			html.add(bs_row_end())
+			html.add(bs_card_end())
+			html.add(bs_col_end())
+		html.add(bs_row_end())
+
+
+
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -1334,6 +1816,22 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			else:
 				self.show_hosts()
 			return
+		elif self.path.startswith("/ovs"):
+			if "port" not in opts:
+				opts["port"] = ""
+			if "tag" not in opts:
+				opts["tag"] = ""
+			if "trunk" not in opts:
+				opts["trunk"] = ""
+			if "vmode" not in opts:
+				opts["vmode"] = ""
+			self.show_ovs(opts["port"], opts["tag"], opts["trunk"], opts["vmode"])
+			return
+		elif self.path.startswith("/vhost"):
+			if "host" not in opts:
+				opts["host"] = ""
+			self.show_vhost(opts["host"])
+			return
 		elif self.path.startswith("/assets/"):
 			if ".." in self.path:
 				self.send_response(404)
@@ -1341,23 +1839,26 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				self.end_headers()
 				self.wfile.write(bytes("file NO SCANS FOUND: " + self.path, "utf8"))
 			else:
-				if os.path.isfile("." + self.path):
-					statinfo = os.stat("." + self.path)
+				filepath = self.path.split("?")[0]
+				if os.path.isfile("." + filepath):
+					statinfo = os.stat("." + filepath)
 					size = statinfo.st_size
 					self.send_response(200)
 					self.send_header("Content-length", size)
-					if self.path.endswith(".js"):
+					if filepath.endswith(".js"):
 						self.send_header("Content-type", "application/javascript")
-					elif self.path.endswith(".css"):
+					elif filepath.endswith(".html"):
+						self.send_header("Content-type", "text/html")
+					elif filepath.endswith(".css"):
 						self.send_header("Content-type", "text/css")
-					elif self.path.endswith(".png"):
+					elif filepath.endswith(".png"):
 						self.send_header("Content-type", "image/png")
-					elif self.path.endswith(".svg"):
+					elif filepath.endswith(".svg"):
 						self.send_header("Content-type", "image/svg+xml")
 					else:
 						self.send_header("Content-type", "text/plain")
 					self.end_headers()
-					data = open("." + self.path, "rb").read()
+					data = open("." + filepath, "rb").read()
 					self.wfile.write(data)
 				else:
 					self.send_response(404)
@@ -1386,24 +1887,46 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html += self.show_element(element[part], prefix + "&nbsp;&nbsp;&nbsp;")
 		return html;
 
-	def search_element(self, element, search):
+
+	def matchmark(self, text, old, color):
+		index_l = text.lower().index(old.lower())
+		return text[:index_l] + "<b style='color: " + color + ";'>" + text[index_l:][:len(old)] + "</b>" + text[index_l + len(old):] 
+
+
+	def search_element(self, element, search, path = "", matches = {}):
+		ret = False
 		if type(element) is str:
 			if search.lower() in str(element).lower():
-				return True
+				rank = 1
+				if search == str(element):
+					rank += 1
+				if search.lower() == str(element).lower():
+					rank += 1
+				if str(element).startswith(search):
+					rank += 1
+				if str(element).lower().startswith(search.lower()):
+					rank += 1
+				if search in str(element):
+					rank += 1
+				matches[path] = [rank, str(element)]
+				ret = True
 		elif type(element) is int:
 			if search.lower() in str(element).lower():
-				return True
+				matches[path] = str(element)
+				ret = True
 		elif type(element) is list:
+			n = 0
 			for part in element:
-				if search.lower() in str(part).lower():
-					if self.search_element(part, search) == True:
-						return True
+				res, matches = self.search_element(part, search, path + "/" + str(n), matches)
+				if res == True:
+					ret = True
+				n += 1
 		elif type(element) is dict:
 			for part in element:
-				if search.lower() in str(element[part]).lower():
-					if self.search_element(element[part], search) == True:
-						return True
-		return False
+				res, matches = self.search_element(element[part], search, path + "/" + str(part).replace("ansible_", ""), matches)
+				if res == True:
+					ret = True
+		return ret, matches
 
 
 def inventory_read(timestamp = 0):

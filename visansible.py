@@ -1385,6 +1385,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				name = opt.split("=")[0]
 				value = opt.split("=")[1]
 				opts[name] = value
+
+		if self.path.startswith("/visansible/"):
+			self.path = "/" + self.path.split("/", 2)[2]
+
 		if self.path.startswith("/rescan"):
 			if "host" not in opts or opts["host"] == "":
 				opts["host"] = "all"

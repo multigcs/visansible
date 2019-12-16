@@ -117,18 +117,18 @@ td {
     <div class="bg-light border-right" id="sidebar-wrapper">
      <div class="sidebar-heading">""" + title + """</div>
      <div class="list-group list-group-flush">
-      <a href="/hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
-      <a href="/network" class="list-group-item list-group-item-action bg-light">Network</a>
-      <a href="/groups" class="list-group-item list-group-item-action bg-light">Groups</a>
-      <a href="/stats" class="list-group-item list-group-item-action bg-light">Stats</a>
-      <a href="/inventory" class="list-group-item list-group-item-action bg-light">Inventory-File</a>
-      <a href="/rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
+      <a href="hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
+      <a href="network" class="list-group-item list-group-item-action bg-light">Network</a>
+      <a href="groups" class="list-group-item list-group-item-action bg-light">Groups</a>
+      <a href="stats" class="list-group-item list-group-item-action bg-light">Stats</a>
+      <a href="inventory" class="list-group-item list-group-item-action bg-light">Inventory-File</a>
+      <a href="rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
      </div>
 """ + embed + """
     </div>
     <div id="page-content-wrapper">
       <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
-        <img id="menu-toggle" src="/assets/MaterialDesignIcons/menu-left-outline.svg" />
+        <img id="menu-toggle" src="assets/MaterialDesignIcons/menu-left-outline.svg" />
         <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
          <span class="navbar-toggler-icon"></span>
         </button>

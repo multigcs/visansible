@@ -934,11 +934,11 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		links = self.show_history(stamp, host)
 		groups = " Groups: "
 		for group in inventory["hosts"][host]["groups"]:
-			groups += "<a href='/hosts?group=" + group + "'>" + group + "</a> "
+			groups += "<a href='hosts?group=" + group + "'>" + group + "</a> "
 		if stamp == "0":
-			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='/rescan?host=" + host + "'>[RESCAN]</a>" + groups, "latest info", links);
+			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='rescan?host=" + host + "'>[RESCAN]</a>" + groups, "latest info", links);
 		else:
-			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='/rescan?host=" + host + "'>[RESCAN]</a>" + groups, datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S") + "", links);
+			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='rescan?host=" + host + "'>[RESCAN]</a>" + groups, datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S") + "", links);
 		if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][stamp]:
 			osfamily = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_os_family"]
 			distribution = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_distribution"]
@@ -1045,7 +1045,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						html.add("<tr onClick=\"location.href = 'hosts?group=" + group + "';\">\n")
 					html.add(" <td colspan='" + str(len(options) + 4) + "'>\n")
 					html.add("  <h2>Group: " + group + " </h2>\n")
-					html.add("  <a href='/rescan?host=" + group + "'>[RESCAN]<a/>\n")
+					html.add("  <a href='rescan?host=" + group + "'>[RESCAN]<a/>\n")
 					for section in inventory["groups"][group]["options"]:
 						for var in inventory["groups"][group]["options"][section]:
 							html.add("<small>" + var + "=" + inventory["groups"][group]["options"][section][var] + " </small>")
@@ -1118,16 +1118,16 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							else:
 								html.add(" <td>---</td>\n")
 							if stamp != "0":
-								html.add(" <td colspan='6' style='color: #00FF00;'>OK <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+								html.add(" <td colspan='6' style='color: #00FF00;'>OK <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						else:
 							if hoststamp in inventory["hosts"][host] and "msg" in inventory["hosts"][host][hoststamp]:
 								html.add(" <td colspan='6' style='color: #FF0000;'>" + inventory["hosts"][host][hoststamp]["msg"].strip() + "</td>\n")
 							else:
 								html.add(" <td colspan='6' style='color: #FF0000;'>NO SCANS FOUND</td>\n")
 							if stamp != "0":
-								html.add(" <td colspan='6' style='color: #FF0000;'>ERR <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+								html.add(" <td colspan='6' style='color: #FF0000;'>ERR <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						if stamp == "0":
-							html.add(" <td>" + inventory["hosts"][host]["status"] + " " + datetime.fromtimestamp(int(inventory["hosts"][host]["last"])).strftime("%a %d. %b %Y %H:%M:%S") + " <a href='/rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+							html.add(" <td>" + inventory["hosts"][host]["status"] + " " + datetime.fromtimestamp(int(inventory["hosts"][host]["last"])).strftime("%a %d. %b %Y %H:%M:%S") + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						html.add("</tr>\n")
 						if searchinfo != "":
 							html.add("<tr><td colspan='9' style='color: #999999;'>")
@@ -1386,8 +1386,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				value = opt.split("=")[1]
 				opts[name] = value
 
-		if self.path.startswith("/visansible/"):
+		if self.path.startswith("/visansible"):
 			self.path = "/" + self.path.split("/", 2)[2]
+		if self.path == "":
+			self.path = "/"
 
 		if self.path.startswith("/rescan"):
 			if "host" not in opts or opts["host"] == "":

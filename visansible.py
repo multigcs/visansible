@@ -94,7 +94,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if mode == "network":
 							self.show_host_graph_network(graph, inventory["hosts"][host]["0"]["ansible_facts"], "host_" + host, stamp, True)
 					elif "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host]["0"]:
-						graph.node_add("host_" + host, host + "\\n" + inventory["hosts"][host]["0"]["msg"].strip().replace(":", "\\n"), "monitor", "font: {color: '#FF0000'}")
+						graph.node_add("host_" + host, host + "\\n" + inventory["hosts"][host]["0"]["msg"].strip().replace(":", "\\n").replace("'", "\'"), "monitor", "font: {color: '#FF0000'}")
 					else:
 						if stamp == "0":
 							graph.node_add("host_" + host, host + "\\nNO SCANS FOUND", "monitor", "font: {color: '#FF0000'}")
@@ -1582,7 +1582,9 @@ def inventory_read(timestamp = 0):
 	hists = sorted(glob.glob("./facts/hist_*"), reverse=True)
 	misc = False
 	for line in hostslist.split("\n"):
-		if line.startswith("[") and ":" in line:
+		if line.startswith("#"):
+			print("COMMENTLINE: " + line)
+		elif line.startswith("[") and ":" in line:
 			group = line.strip("[]").split(":")[0]
 			section = line.strip("[]").split(":")[1]
 			if group not in inventory["groups"]:

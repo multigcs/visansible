@@ -1,0 +1,1 @@
+{"changed": false, "module_stderr": "Shared connection to 192.168.122.213 closed.\r\n", "module_stdout": "/bin/sh: 1: /usr/bin/python3: not found\r\n", "msg": "The module failed to execute correctly, you probably need to set the interpreter.\nSee stdout/stderr for the exact error", "rc": 127}

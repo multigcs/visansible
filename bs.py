@@ -5,6 +5,7 @@
 hprefix = "      "
 osicons = {
 	"Debian": "debian",
+	"Ubuntu": "ubuntu",
 	"RedHat": "hat-fedora",
 	"FreeBSD": "freebsd",
 	"OpenBSD": "openbsd",

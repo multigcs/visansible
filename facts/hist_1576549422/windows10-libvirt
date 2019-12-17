@@ -1,0 +1,1 @@
+{"changed": false, "msg": "ssl: HTTPSConnectionPool(host='192.168.122.141', port=5986): Max retries exceeded with url: /wsman (Caused by NewConnectionError('<urllib3.connection.VerifiedHTTPSConnection object at 0x7f6e775d9610>: Failed to establish a new connection: [Errno 113] No route to host',))", "unreachable": true}

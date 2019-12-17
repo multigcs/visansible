@@ -1,4 +1,4 @@
-# Visansible (pre Alpha-Version !!!!!)
+# Visansible
 Visualization of Ansibel-Facts (Inventory-Data) using Python and HTML5/Bootstrap4
 
  edit 'inventory.cfg' and run 'ansible -i inventory.cfg all -m setup --tree facts' to get the inventory-data of your nodes

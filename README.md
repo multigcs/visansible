@@ -10,6 +10,8 @@ Visualization of Ansibel-Facts (Inventory-Data) using Python and HTML5/Bootstrap
 
 ![Network](doc/network.png?raw=true "Network")
 
+![Network](doc/stats.png?raw=true "Stats")
+
 ![Hosts](doc/hosts.png?raw=true "Hosts")
 
 ![Centos7.6 on KVM](doc/kvm-centos7.6.png?raw=true "Centos7.6 on KVM")

@@ -10,7 +10,7 @@ Visualization of Ansibel-Facts (Inventory-Data) using Python and HTML5/Bootstrap
 
 ![Network](doc/network.png?raw=true "Network")
 
-![Network](doc/stats.png?raw=true "Stats")
+![Stats](doc/stats.png?raw=true "Stats")
 
 ![Hosts](doc/hosts.png?raw=true "Hosts")
 

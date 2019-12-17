@@ -12,7 +12,7 @@ class HtmlPage():
 		self.html += "<html lang='en'>\n"
 		self.html += " <head>\n"
 		if subtitle != "":
-			self.html += "  <title>" + title + " - " + subtitle + "</title>\n"
+			self.html += "  <title>Visansible - " + subtitle + "</title>\n"
 		else:
 			self.html += "  <title>" + title + "</title>\n"
 		self.html += "  <meta charset='utf-8'>\n"

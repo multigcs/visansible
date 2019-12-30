@@ -104,28 +104,38 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			}
 		}
 		
-		data["summary"] = opts["summary"]
+		data["summary"] = opts["host"] + " - " + opts["service"]
 		data["description"] = opts["description"]
-		
+
 		response = requests.post(self.mantisbt + "/api/rest/issues", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
-		rjson = json.loads(response.text)
-		issueid = rjson["issue"]["id"]
-		print("issueid", issueid)
+		if response.status_code != 500:
+			rjson = json.loads(response.text)
+			issueid = rjson["issue"]["id"]
 
-		data = {"tags": [{"name": "server:"}]}
-		data["tags"][0]["name"] = "server:" + opts["host"]
-		response = requests.post(self.mantisbt + "/api/rest/issues/" + str(issueid) + "/tags", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
-		rjson = json.loads(response.text)
+			data = {"tags": [{"name": "server:"}]}
+			data["tags"][0]["name"] = "server:" + opts["host"]
+			response = requests.post(self.mantisbt + "/api/rest/issues/" + str(issueid) + "/tags", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
+			rjson = json.loads(response.text)
 
-		data = {"tags": [{"name": "service:"}]}
-		data["tags"][0]["name"] = "service:" + opts["service"]
-		response = requests.post(self.mantisbt + "/api/rest/issues/" + str(issueid) + "/tags", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
-		rjson = json.loads(response.text)
+			data = {"tags": [{"name": "service:"}]}
+			data["tags"][0]["name"] = "service:" + opts["service"]
+			response = requests.post(self.mantisbt + "/api/rest/issues/" + str(issueid) + "/tags", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
+			rjson = json.loads(response.text)
 
-		self.send_response(200)
-		self.send_header("Content-type", "text/html")
-		self.end_headers()
-		self.wfile.write(bytes("<meta http-equiv=\"refresh\" content=\"1; url=/host?host=" + opts["host"] + "\"><h3>Issue-ID: " + str(issueid) + "</h3>", "utf8"))
+			self.send_response(200)
+			self.send_header("Content-type", "text/html")
+			self.end_headers()
+			self.wfile.write(bytes("<meta http-equiv=\"refresh\" content=\"1; url=/host?host=" + opts["host"] + "\"><h3>Issue-ID: " + str(issueid) + "</h3>", "utf8"))
+		else:
+			print("#########")
+			print(data)
+			print("#########")
+			print(response.text)
+			print("#########")
+			self.send_response(200)
+			self.send_header("Content-type", "text/html")
+			self.end_headers()
+			self.wfile.write(bytes("<meta http-equiv=\"refresh\" content=\"3; url=/host?host=" + opts["host"] + "\"><h3>ERROR:</h3><p>" + response.text + "</p>", "utf8"))
 		return
 
 
@@ -1106,22 +1116,27 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add(self.show_host_table_mounts_hist(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
 			html.add(bs_card_end())
 			html.add(bs_col_end())
+			html.add(bs_row_end())
 
 
 
-			## MantisBT-Tickets ##
-			if self.mantisbt != "" and self.livestatus != "":
-				lsdata = self.livestatus_services(host)
+			## Tickets ##
+			if self.mantisbt != "" or self.livestatus != "":
+				html.add(bs_row_begin())
+			if self.mantisbt != "":
 				issues = self.mantisbt_tickets(host)
+			if self.livestatus != "":
+				lsdata = self.livestatus_services(host)
 				srv_issues = {}
-				for issue in issues:
-					if issue["match"] == True:
-						for tag in issue["tags"]:
-							if tag["name"].startswith("service:"):
-								service = tag["name"].replace("service:", "")
-								if not service in srv_issues:
-									srv_issues[service] = []
-								srv_issues[service].append(issue)
+				if self.mantisbt != "":
+					for issue in issues:
+						if issue["match"] == True:
+							for tag in issue["tags"]:
+								if tag["name"].startswith("service:"):
+									service = tag["name"].replace("service:", "")
+									if not service in srv_issues:
+										srv_issues[service] = []
+									srv_issues[service].append(issue)
 
 				html.add(bs_col_begin("6"))
 				html.add(bs_card_begin("<a target='_blank' href='" + self.pnp4nagios + "/check_mk/index.py?start_url=%2Ftestnetz%2Fcheck_mk%2Fview.py%3Fhost%3D" + host + "%26view_name%3Dhost'>Monitoring-Tickets</a>", "magnify"))
@@ -1174,9 +1189,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html.add(bs_card_end())
 				html.add(bs_col_end())
 
-
+			if self.mantisbt != "":
 				html.add(bs_col_begin("6"))
-				html.add(bs_card_begin("<a target='_blank' href='" + self.mantisbt + "'>Other-Tickets</a>", "ticket"))
+				if self.livestatus != "":
+					html.add(bs_card_begin("<a target='_blank' href='" + self.mantisbt + "'>Other-Tickets</a>", "ticket"))
+				else:
+					html.add(bs_card_begin("<a target='_blank' href='" + self.mantisbt + "'>Tickets</a>", "ticket"))
 				html.add(bs_row_begin())
 				html.add("<table class='table' width='90%'>")
 				html.add("<tr><th width='20px'>Status</th><th>Summary</th><th>Priority</th><th>Handler</th><th>Tags</th><th>Ticket</th></tr>\n")
@@ -1213,11 +1231,15 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html.add(bs_card_end())
 				html.add(bs_col_end())
 
+			if self.mantisbt != "" or self.livestatus != "":
+				html.add(bs_row_end())
+
 
 			## CheckMK-Graphs ##
 			if self.pnp4nagios != "":
 				end = int(time.time()) 
 				start = end - self.pnp4nagios_duration * 3600
+				html.add(bs_row_begin())
 				html.add(bs_col_begin("12"))
 				html.add(bs_card_begin("<a target='_blank' href='" + self.pnp4nagios + "/check_mk/index.py?start_url=%2Ftestnetz%2Fcheck_mk%2Fview.py%3Fhost%3D" + host + "%26view_name%3Dhost'>CheckMK</a>", "chart-line"))
 				html.add(bs_row_begin())
@@ -1233,7 +1255,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html.add(bs_row_end())
 				html.add(bs_card_end())
 				html.add(bs_col_end())
+				html.add(bs_row_end())
 
+			html.add(bs_row_begin())
 			html.add(self.show_host_table_memory(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
 			html.add(self.show_host_table_network(inventory["hosts"][host][stamp]["ansible_facts"]))
 			html.add(bs_row_end())
@@ -1253,18 +1277,22 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add(bs_col_end())
 			html.add(bs_row_end())
 			## Disks ##
-			html.add(bs_row_begin())
-			html.add(self.show_host_table_disks(inventory["hosts"][host][stamp]["ansible_facts"]))
-			html.add(self.show_host_table_mounts(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
-			html.add(bs_col_begin("12"))
-			html.add(bs_card_begin("Disks-Graph", "harddisk"))
-			graph = VisGraph("vis_disks")
-			graph.node_add("host_" + host, host, icon)
-			self.show_host_graph_disks(graph, inventory["hosts"][host][stamp]["ansible_facts"], "host_" + host)
-			html.add(graph.end(direction = "UD"))
-			html.add(bs_card_end())
-			html.add(bs_col_end())
-			html.add(bs_row_end())
+			show = True
+			if "ansible_virtualization_type" in inventory["hosts"][host][stamp]["ansible_facts"] and inventory["hosts"][host][stamp]["ansible_facts"]["ansible_virtualization_type"] == "docker":
+				show = False
+			if show == True:
+				html.add(bs_row_begin())
+				html.add(self.show_host_table_disks(inventory["hosts"][host][stamp]["ansible_facts"]))
+				html.add(self.show_host_table_mounts(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
+				html.add(bs_col_begin("12"))
+				html.add(bs_card_begin("Disks-Graph", "harddisk"))
+				graph = VisGraph("vis_disks")
+				graph.node_add("host_" + host, host, icon)
+				self.show_host_graph_disks(graph, inventory["hosts"][host][stamp]["ansible_facts"], "host_" + host)
+				html.add(graph.end(direction = "UD"))
+				html.add(bs_card_end())
+				html.add(bs_col_end())
+				html.add(bs_row_end())
 		else:
 			if "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host][stamp]:
 				html.add("<b>" + inventory["hosts"][host][stamp]["msg"].strip() + "</b>\n")
@@ -1277,6 +1305,30 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return
 
 
+	def show_csv(self):
+		csv = ""
+		for host in inventory["hosts"]:
+			ipaddr = ""
+			if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
+				for part in inventory["hosts"][host]["0"]["ansible_facts"]:
+					if part != "ansible_default_ipv4" and type(inventory["hosts"][host]["0"]["ansible_facts"][part]) is dict and "device" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
+						if "ipv4" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
+							if type(inventory["hosts"][host]["0"]["ansible_facts"][part]["ipv4"]) == list:
+								for ipv4 in inventory["hosts"][host]["0"]["ansible_facts"][part]["ipv4"]:
+									ipaddr = ipv4["address"]
+									break
+							else:
+								ipaddr = inventory["hosts"][host]["0"]["ansible_facts"][part]["ipv4"]["address"]
+								break
+			if ipaddr != "":
+				csv += host + ";"
+				csv += ipaddr + "\n"
+		self.send_response(200)
+		self.send_header("Content-type", "text/plain")
+		self.end_headers()
+		self.wfile.write(bytes(csv, "utf8"))
+
+
 	def show_hosts(self, stamp = "0", sgroup = "all", search = ""):
 		if search != "":
 			search = search.replace("%20", " ")
@@ -1286,14 +1338,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		else:
 			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Hosts (" + sgroup + ")", datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S"), self.show_history(stamp));
 		stamps = []
-
-
 		if self.livestatus != "":
 			lsdata = self.livestatus_services()
 		if self.mantisbt != "":
 			issues = self.mantisbt_tickets()
-
-
 		html.add("\n")
 		html.add(bs_add("<input id='search' type='text' name='search' value='' /><br />"))
 		html.add("<script>\n")
@@ -1896,6 +1944,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			if "search" not in opts:
 				opts["search"] = ""
 			self.show_hosts(opts["stamp"], opts["group"], opts["search"])
+			return
+		elif self.path.startswith("/csv"):
+			self.show_csv()
 			return
 		elif self.path.startswith("/stats"):
 			self.show_stats(opts["stamp"])

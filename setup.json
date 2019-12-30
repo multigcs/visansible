@@ -2,7 +2,7 @@
 	"ip": "127.0.0.1",
 	"port": 8081,
 	"checkmk": {
-		"enable": false,
+		"enable": true,
 		"duration": 12,
 		"baseurl": "http://192.168.122.12/testnetz",
 		"livestatus": {

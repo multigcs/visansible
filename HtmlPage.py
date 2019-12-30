@@ -123,6 +123,7 @@ td {
       <a href="stats" class="list-group-item list-group-item-action bg-light">Stats</a>
       <a href="inventory" class="list-group-item list-group-item-action bg-light">Inventory-File</a>
       <a href="rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
+      <a target="_blank" href="csv" class="list-group-item list-group-item-action bg-light">CSV</a>
      </div>
 """ + embed + """
     </div>

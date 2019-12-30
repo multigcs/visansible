@@ -9,6 +9,7 @@ osicons = {
 	"RedHat": "hat-fedora",
 	"FreeBSD": "freebsd",
 	"OpenBSD": "openbsd",
+	"NetBSD": "netbsd",
 	"Suse": "opensuse",
 	"LibreELEC": "youtube-tv",
 	"OpenWrt": "router-wireless",

@@ -11,7 +11,7 @@
 		}
 	},
 	"mantisbt": {
-		"enable": false,
+		"enable": true,
 		"baseurl": "http://localhost/mantisbt",
 		"token": "N60pjYr9iCJFLDjcpqJjGZS-yUbzyQ6B",
 		"project": 1

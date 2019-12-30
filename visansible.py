@@ -146,6 +146,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								issue["match"] = True
 		except:
 			print("ERROR: getting mantis ticket data")
+			self.mantisbt = ""
 			return {}
 		return issues["issues"]
 
@@ -178,6 +179,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				lsdata.append(newservice)
 		except:
 			print("ERROR: getting livestatus data")
+			print("ERROR: getting livestatus data")
+			self.livestatus = ""
 			return lsdata
 		return lsdata
 
@@ -409,7 +412,36 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 	def show_host_graph_disks(self, graph, facts, parentnode):
-		if "ansible_devices" not in facts:
+		test = False
+		if "ansible_devices" in facts:
+			for device in facts["ansible_devices"]:
+				if type(facts["ansible_devices"][device]) is list:
+					for partition in facts["ansible_devices"][device]:
+						test = True
+				if "partitions" in facts["ansible_devices"][device]:
+						test = True
+		if test == False:
+			if "ansible_mounts" in facts:
+				for mount in facts["ansible_mounts"]:
+					graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+					if mount["mount"] == "/":
+						graph.edge_add(parentnode, parentnode + "_mount_" + mount["mount"])
+
+					mparent = ""
+					for mount_parent in facts["ansible_mounts"]:
+						mtest = mount_parent["mount"]
+						if mtest != "/":
+							mtest = mount_parent["mount"] + "/"
+						if mtest in mount["mount"] and mount["mount"] != mount_parent["mount"]:
+							if len(mparent) < len(mount_parent["mount"]):
+								mparent = mount_parent["mount"]
+
+
+					if mparent != "":
+						graph.edge_add(parentnode + "_mount_" + mparent, parentnode + "_mount_" + mount["mount"])
+
+
+
 			return
 		vg2pv = {}
 		if "ansible_lvm" in facts:
@@ -437,8 +469,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if mount["device"] == lv_device:
 							graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
 							graph.edge_add(parentnode + "_lvs_" + lv, parentnode + "_mount_" + mount["mount"])
-		if type(facts["ansible_devices"]) is list:
-			return
 		for device in facts["ansible_devices"]:
 			if type(facts["ansible_devices"][device]) is list:
 				if device.startswith("cd"):
@@ -1459,7 +1489,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										if tag["name"] == "server:" + host:
 											issue["match"] = True
 											tickets += 1
-										elif tag["name"] == "server:" + inventory["hosts"][host]["0"]["ansible_facts"]["ansible_fqdn"]:
+										elif "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"] and "ansible_fqdn" in inventory["hosts"][host]["0"]["ansible_facts"] and tag["name"] == "server:" + inventory["hosts"][host]["0"]["ansible_facts"]["ansible_fqdn"]:
 											tickets += 1
 							if tickets > 0:
 								html.add(" <td bgcolor='#ababff'>" + str(tickets) + "</td>\n")

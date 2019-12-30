@@ -78,10 +78,12 @@ class VisGraph():
 
 
 	def node_add(self, nid, label, icon = "desktop-tower", options = ""):
+		if not "/" in icon:
+			icon = "assets/MaterialDesignIcons/" + icon
 		if options != "":
-			self.html += "    {id: '" + nid + "', label: '" + label + "', image:'assets/MaterialDesignIcons/" + icon + ".svg', shape:'image', " + options + "},\n"
+			self.html += "    {id: '" + nid + "', label: '" + label + "', image:'" + icon + ".svg', shape:'image', " + options + "},\n"
 		else:
-			self.html += "    {id: '" + nid + "', label: '" + label + "', image:'assets/MaterialDesignIcons/" + icon + ".svg', shape:'image'},\n"
+			self.html += "    {id: '" + nid + "', label: '" + label + "', image:'" + icon + ".svg', shape:'image'},\n"
 
 
 	def edge_add(self, source, target, options = ""):

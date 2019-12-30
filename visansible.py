@@ -9,8 +9,12 @@ import time
 from datetime import datetime
 import glob
 import json
+import yaml
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import urllib.parse
 import xml.etree.ElementTree as ET
+import socket
+import requests
 
 import subprocess
 from HtmlPage import *
@@ -19,6 +23,7 @@ from bs import *
 
 inventory = {}
 ipv4_ips = {}
+vasetup = {}
 
 
 def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
@@ -58,6 +63,124 @@ def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
 class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	color_n = 0
 	colors = ["#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]
+	vasetup = {}
+	if os.path.isfile("setup.json"):
+		with open("setup.json") as json_file:
+			vasetup = json.load(json_file)
+	pnp4nagios = ""
+	pnp4nagios_duration = 12
+	livestatus = ""
+	if "checkmk" in vasetup and "enable" in vasetup["checkmk"] and vasetup["checkmk"]["enable"] == True:
+		if "baseurl" in vasetup["checkmk"]:
+			pnp4nagios = vasetup["checkmk"]["baseurl"]
+		if "duration" in vasetup["checkmk"]:
+			pnp4nagios_duration = vasetup["checkmk"]["duration"]
+		if "livestatus" in vasetup["checkmk"]:
+			if "ip" in vasetup["checkmk"]["livestatus"] and "port" in vasetup["checkmk"]["livestatus"]:
+				livestatus = (vasetup["checkmk"]["livestatus"]["ip"], vasetup["checkmk"]["livestatus"]["port"])
+
+	mantisbt = ""
+	mantisbt_token = ""
+	mantisbt_project = 1
+	if "mantisbt" in vasetup and "enable" in vasetup["mantisbt"] and vasetup["mantisbt"]["enable"] == True:
+		if "baseurl" in vasetup["mantisbt"]:
+			mantisbt = vasetup["mantisbt"]["baseurl"]
+		if "token" in vasetup["mantisbt"]:
+			mantisbt_token = vasetup["mantisbt"]["token"]
+		if "project" in vasetup["mantisbt"]:
+			mantisbt_project = vasetup["mantisbt"]["project"]
+		
+
+	def mantisbt_issues_post(self, opts = []):
+		print(opts)
+		data = {
+			"summary": "",
+			"description": "",
+			"category": {
+				"name": "General"
+			},
+			"project": {
+				"name": "Testnetz"
+			}
+		}
+		
+		data["summary"] = opts["summary"]
+		data["description"] = opts["description"]
+		
+		response = requests.post(self.mantisbt + "/api/rest/issues", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
+		rjson = json.loads(response.text)
+		issueid = rjson["issue"]["id"]
+		print("issueid", issueid)
+
+		data = {"tags": [{"name": "server:"}]}
+		data["tags"][0]["name"] = "server:" + opts["host"]
+		response = requests.post(self.mantisbt + "/api/rest/issues/" + str(issueid) + "/tags", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
+		rjson = json.loads(response.text)
+
+		data = {"tags": [{"name": "service:"}]}
+		data["tags"][0]["name"] = "service:" + opts["service"]
+		response = requests.post(self.mantisbt + "/api/rest/issues/" + str(issueid) + "/tags", data = json.dumps(data), headers={"Authorization": self.mantisbt_token, "Content-Type": "application/json"})
+		rjson = json.loads(response.text)
+
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes("<meta http-equiv=\"refresh\" content=\"1; url=/host?host=" + opts["host"] + "\"><h3>Issue-ID: " + str(issueid) + "</h3>", "utf8"))
+		return
+
+
+	def mantisbt_tickets(self, host = ""):
+		try:
+			issues = json.loads(requests.get(self.mantisbt + "/api/rest/issues?project_id=" + str(self.mantisbt_project), headers={"Authorization": self.mantisbt_token}).text)
+			for issue in issues["issues"]:
+				if host == "":
+					issue["match"] = True
+				else:
+					issue["match"] = False
+					issue["viewed"] = False
+					if "tags" in issue:
+						for tag in issue["tags"]:
+							if tag["name"] == "server:" + host:
+								issue["match"] = True
+							elif tag["name"] == "server:" + inventory["hosts"][host]["0"]["ansible_facts"]["ansible_fqdn"]:
+								issue["match"] = True
+		except:
+			print("ERROR: getting mantis ticket data")
+			return {}
+		return issues["issues"]
+
+
+	def livestatus_services(self, host = ""):
+		lsdata = []
+		try:
+			columns = ["host_name", "description", "state", "plugin_output", "acknowledged"]
+			family = socket.AF_INET if type(self.livestatus) == tuple else socket.AF_UNIX
+			sock = socket.socket(family, socket.SOCK_STREAM)
+			sock.connect(self.livestatus)
+			if host != "":
+				get = "GET services\nFilter: host_name = " + host + "\nColumns: " + " ".join(columns) + "\nOutputFormat: json\n"
+			else:
+				get = "GET services\nColumns: " + " ".join(columns) + "\nOutputFormat: json\n"
+			sock.sendall(get.encode('utf-8'))
+			sock.shutdown(socket.SHUT_WR)
+			chunk = sock.recv(1024)
+			data = chunk
+			while len(chunk) > 0:
+				chunk = sock.recv(1024)
+				data += chunk
+			sock.close()
+			for service in json.loads(data.decode()):
+				newservice = {}
+				n = 0
+				for column in service:
+					newservice[columns[n]] = column
+					n += 1
+				lsdata.append(newservice)
+		except:
+			print("ERROR: getting livestatus data")
+			return lsdata
+		return lsdata
+
 
 	def show_graph(self, mode = "group", stamp = "0"):
 		if mode == "":
@@ -211,6 +334,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							else:
 								## show ipv4 ##
 								graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, "ipv4")
+								#graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, self.pnp4nagios + "/pnp4nagios/testnetz/pnp4nagios/index.php/image?host=" + parentnode.replace("host_", "") + "&srv=Interface_1&theme=facelift&baseurl=%2Ftestnetz%2Fcheck_mk%2F&view=0&source=0&start=1576596319&end=1576610719&w=50&h=20")
 								graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
 								## show ipv4-network ##
 								graph.node_add("network_" + network, network, "net");
@@ -469,7 +593,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html += bs_card_end()
 			html += bs_col_end()
 		return html
-
 
 	def show_host_table_disks(self, facts):
 		html = ""
@@ -800,7 +923,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if "ansible_mounts" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
 							if mount_n < len(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"]):
 								if "size_available" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]:
-									value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
+									if int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"]) > 0:
+										value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
+									else:
+										value = 0
 									last = 100 - value
 				data.append(last)
 			datas.append(data)
@@ -886,7 +1012,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			links += bs_add("<tr><td><a href='?host=" + hostname + "&stamp=0'>latest info</a></td></tr>")
 			for tstamp in inventory["hosts"][hostname]:
 				if tstamp.isdigit() and tstamp != "0":
-
 					if "ansible_facts" in inventory["hosts"][hostname][tstamp]:
 						stat = "OK"
 					else:
@@ -955,9 +1080,138 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add(self.show_host_table_mounts_hist(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
 			html.add(bs_card_end())
 			html.add(bs_col_end())
+
+
+
+			## MantisBT-Tickets ##
+			if self.mantisbt != "" and self.livestatus != "":
+				lsdata = self.livestatus_services(host)
+				issues = self.mantisbt_tickets(host)
+				srv_issues = {}
+				for issue in issues:
+					if issue["match"] == True:
+						for tag in issue["tags"]:
+							if tag["name"].startswith("service:"):
+								service = tag["name"].replace("service:", "")
+								if not service in srv_issues:
+									srv_issues[service] = []
+								srv_issues[service].append(issue)
+
+				html.add(bs_col_begin("6"))
+				html.add(bs_card_begin("<a target='_blank' href='" + self.pnp4nagios + "/check_mk/index.py?start_url=%2Ftestnetz%2Fcheck_mk%2Fview.py%3Fhost%3D" + host + "%26view_name%3Dhost'>Monitoring-Tickets</a>", "magnify"))
+				html.add(bs_row_begin())
+				html.add("<table class='table' width='90%'>")
+				html.add("<tr><th width='20px'>Status</th><th>Service</th><th>Output</th><th>Ticket</th></tr>\n")
+				for part in lsdata:
+					if part["description"] in srv_issues or (part["state"] > 0 and part["acknowledged"] == 0):
+						html.add("<tr>\n")
+						if part["state"] == 0:
+							html.add("<td bgcolor='#abffab'>OK</td>\n")
+						elif part["state"] == 1:
+							html.add("<td bgcolor='#ffffab'>WARN</td>\n")
+						elif part["state"] == 2:
+							html.add("<td bgcolor='#ffabab'>CRIT</td>\n")
+						elif part["state"] == 3:
+							html.add("<td bgcolor='#ababab'>UNKN</td>\n")
+						else:
+							html.add("<td bgcolor='#abffff'>???</td>\n")
+						html.add(" <td>" + str(part["description"]) + "</td>\n")
+						html.add(" <td>" + str(part["plugin_output"]) + "</td>\n")
+						html.add(" <td>\n")
+						if part["description"] not in srv_issues:
+							html.add("<a href='/mantisbt_add?host=" + host + "&service=" + part["description"] + "&summary=" + part["plugin_output"] + "&description=" + part["plugin_output"] + "'>[ADD]</a>\n")
+						html.add(" </td>\n")
+						html.add("</tr>\n")
+						if part["description"] in srv_issues:
+							for issue in srv_issues[part["description"]]:
+								issue["viewed"] = True
+								html.add("<tr>\n")
+								html.add("<td></td>\n")
+								html.add(" <td colspan='3'>\n")
+								html.add("  <a target='_blank' href='" + self.mantisbt + "/view.php?id=" + str(issue["id"]) + "'>ID:" + str(issue["id"]) + "</a><br /> ")
+								html.add("  Priority: " + issue["priority"]["name"] + "<br />\n")
+								html.add("  Status: " + issue["status"]["name"] + "<br />\n")
+								if "handler" in issue and "name" in issue["handler"]:
+									html.add("  Handler: " + issue["handler"]["name"] + "<br />\n")
+								if "tags" in issue:
+									html.add("  Tags: ")
+									for tag in issue["tags"]:
+										if tag["name"].startswith("server:"):
+											html.add("<a href='/host?host=" + tag["name"].replace("server:", "") + "'>" + tag["name"] + "</a> ")
+										else:
+											html.add(tag["name"] + " ")
+									html.add("<br />\n")
+								html.add(" </td>\n")
+								html.add("</tr>\n")
+				html.add("</table>")
+				html.add(bs_row_end())
+				html.add(bs_card_end())
+				html.add(bs_col_end())
+
+
+				html.add(bs_col_begin("6"))
+				html.add(bs_card_begin("<a target='_blank' href='" + self.mantisbt + "'>Other-Tickets</a>", "ticket"))
+				html.add(bs_row_begin())
+				html.add("<table class='table' width='90%'>")
+				html.add("<tr><th width='20px'>Status</th><th>Summary</th><th>Priority</th><th>Handler</th><th>Tags</th><th>Ticket</th></tr>\n")
+				for issue in issues:
+					if issue["match"] == True and issue["viewed"] == False:
+						html.add("<tr>\n")
+						if issue["priority"]["name"] == "low":
+							html.add("<td bgcolor='#abffab'>" + issue["priority"]["name"] + "</td>\n")
+						elif issue["priority"]["name"] == "normal":
+							html.add("<td bgcolor='#ffffab'>" + issue["priority"]["name"] + "</td>\n")
+						elif issue["priority"]["name"] == "high":
+							html.add("<td bgcolor='#ffabab'>" + issue["priority"]["name"] + "</td>\n")
+						else:
+							html.add("<td bgcolor='#ababab'>" + issue["priority"]["name"] + "</td>\n")
+						html.add(" <td>" + issue["summary"] + "</td>\n")
+						html.add(" <td>" + issue["status"]["name"] + "</td>\n")
+						if "handler" in issue and "name" in issue["handler"]:
+							html.add(" <td>" + issue["handler"]["name"] + "</td>\n")
+						else:
+							html.add(" <td>---</td>\n")
+						html.add(" <td>")
+						if "tags" in issue:
+							for tag in issue["tags"]:
+								if tag["name"].startswith("server:"):
+									html.add("<a href='/host?host=" + tag["name"].replace("server:", "") + "'>" + tag["name"] + "</a> ")
+								else:
+									html.add(tag["name"] + " ")
+						html.add("</td>\n")
+						html.add(" <td><a target='_blank' href='" + self.mantisbt + "/view.php?id=" + str(issue["id"]) + "'>ID:" + str(issue["id"]) + "</a></td>\n")
+						html.add("</tr>\n")
+				html.add("</table>")
+				html.add("<hr />")
+				html.add(bs_row_end())
+				html.add(bs_card_end())
+				html.add(bs_col_end())
+
+
+			## CheckMK-Graphs ##
+			if self.pnp4nagios != "":
+				end = int(time.time()) 
+				start = end - self.pnp4nagios_duration * 3600
+				html.add(bs_col_begin("12"))
+				html.add(bs_card_begin("<a target='_blank' href='" + self.pnp4nagios + "/check_mk/index.py?start_url=%2Ftestnetz%2Fcheck_mk%2Fview.py%3Fhost%3D" + host + "%26view_name%3Dhost'>CheckMK</a>", "chart-line"))
+				html.add(bs_row_begin())
+				html.add(bs_col_begin("4"))
+				html.add("<img width=100% src=\"" + self.pnp4nagios + "/pnp4nagios/testnetz/pnp4nagios/index.php/image?host=" + host + "&srv=_HOST_&theme=facelift&baseurl=%2Ftestnetz%2Fcheck_mk%2F&view=0&source=0&start=" + str(start) + "&end=" + str(end) + "\">\n")
+				html.add(bs_col_end())
+				html.add(bs_col_begin("4"))
+				html.add("<img width=100% src=\"" + self.pnp4nagios + "/pnp4nagios/testnetz/pnp4nagios/index.php/image?host=" + host + "&srv=Check_MK&theme=facelift&baseurl=%2Ftestnetz%2Fcheck_mk%2F&view=0&source=0&start=" + str(start) + "&end=" + str(end) + "\">\n")
+				html.add(bs_col_end())
+				html.add(bs_col_begin("4"))
+				html.add("<img width=100% src=\"" + self.pnp4nagios + "/pnp4nagios/testnetz/pnp4nagios/index.php/image?host=" + host + "&srv=Memory&theme=facelift&baseurl=%2Ftestnetz%2Fcheck_mk%2F&view=0&source=0&start=" + str(start) + "&end=" + str(end) + "\">\n")
+				html.add(bs_col_end())
+				html.add(bs_row_end())
+				html.add(bs_card_end())
+				html.add(bs_col_end())
+
 			html.add(self.show_host_table_memory(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
 			html.add(self.show_host_table_network(inventory["hosts"][host][stamp]["ansible_facts"]))
 			html.add(bs_row_end())
+
 			## Network ##
 			html.add(bs_row_begin())
 			html.add(self.show_host_table_ifaces(inventory["hosts"][host][stamp]["ansible_facts"]))
@@ -1006,6 +1260,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		else:
 			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Hosts (" + sgroup + ")", datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S"), self.show_history(stamp));
 		stamps = []
+
+
+		if self.livestatus != "":
+			lsdata = self.livestatus_services()
+		if self.mantisbt != "":
+			issues = self.mantisbt_tickets()
+
+
 		html.add("\n")
 		html.add(bs_add("<input id='search' type='text' name='search' value='' /><br />"))
 		html.add("<script>\n")
@@ -1028,13 +1290,21 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		html.add(bs_add("<table class='table table-hover' width='90%'>"))
 		if search != "":
 			html.add("<tr>\n")
+			if self.pnp4nagios != "":
+				html.add(" <th>Graph</th>\n")
 			html.add(" <th>Stamp</th>\n")
 			html.add(" <th>Host</th>\n")
 			for option in options:
 				title = option.replace("ansible_", "").capitalize()
 				html.add(" <th>" + title + "</th>\n")
-			html.add(" <th width='10%'>Options</th>\n")
+			#html.add(" <th width='10%'>Options</th>\n")
 			html.add(" <th width='10%'>Status</th>\n")
+			if self.livestatus != "":
+				html.add(" <th>Problems</th>\n")
+				lsdata = self.livestatus_services()
+			if self.mantisbt != "":
+				html.add(" <th>Tickets</th>\n")
+				issues = self.mantisbt_tickets()
 			html.add("</tr>\n")
 		for group in inventory["groups"]:
 			if sgroup == "all" or sgroup == group:
@@ -1043,7 +1313,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						html.add("<tr onClick=\"location.href = 'hosts?group=all';\">\n")
 					else:
 						html.add("<tr onClick=\"location.href = 'hosts?group=" + group + "';\">\n")
-					html.add(" <td colspan='" + str(len(options) + 4) + "'>\n")
+					colspan = 3
+					if self.pnp4nagios != "":
+						colspan += 1
+					if self.livestatus != "":
+						colspan += 1
+					if self.mantisbt != "":
+						colspan += 1
+					html.add(" <td colspan='" + str(len(options) + colspan) + "'>\n")
 					html.add("  <h2>Group: " + group + " </h2>\n")
 					html.add("  <a href='rescan?host=" + group + "'>[RESCAN]<a/>\n")
 					for section in inventory["groups"][group]["options"]:
@@ -1052,13 +1329,26 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html.add(" </td>\n")
 					html.add("</tr>\n")
 					html.add("<tr>\n")
+
+					if self.pnp4nagios != "":
+						html.add(" <th>Graph</th>\n")
+
 					html.add(" <th>Stamp</th>\n")
 					html.add(" <th>Host</th>\n")
 					for option in options:
 						title = option.replace("ansible_", "").capitalize()
 						html.add(" <th>" + title + "</th>\n")
-					html.add(" <th width='10%'>Options</th>\n")
+					#html.add(" <th width='10%'>Options</th>\n")
 					html.add(" <th width='10%'>Status</th>\n")
+
+					if self.livestatus != "":
+						html.add(" <th>Problems</th>\n")
+						lsdata = self.livestatus_services()
+
+					if self.mantisbt != "":
+						html.add(" <th>Tickets</th>\n")
+						issues = self.mantisbt_tickets()
+
 					html.add("</tr>\n")
 				for host in inventory["hosts"]:
 					hoststamp = "0"
@@ -1093,6 +1383,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								hoststamp = timestamp
 					if stamp == "0" or int(stamp) >= int(inventory["hosts"][host]["first"]):
 						html.add("<tr onClick=\"location.href = 'host?host=" + host + "';\">\n")
+						if self.pnp4nagios != "":
+							end = int(time.time()) 
+							start = end - self.pnp4nagios_duration * 3600
+							html.add(" <td><img src=\"" + self.pnp4nagios + "/pnp4nagios/testnetz/pnp4nagios/index.php/image?host=" + host + "&srv=Check_MK&theme=facelift&baseurl=%2Ftestnetz%2Fcheck_mk%2F&view=0&source=0&start=" + str(start) + "&end=" + str(end) + "&w=100&h=40\"></td>\n")
 						if stamp != "0":
 							html.add(" <td>" + datetime.fromtimestamp(int(hoststamp)).strftime("%a %d. %b %Y %H:%M:%S") + "</td>\n")
 						else:
@@ -1113,24 +1407,75 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 									html.add("</td>\n")
 								else:
 									html.add(" <td>---</td>\n")
-							if "options" in inventory["hosts"][host]:
-								html.add(" <td>" + ", ".join(inventory["hosts"][host]["options"]) + "</td>\n")
-							else:
-								html.add(" <td>---</td>\n")
 							if stamp != "0":
-								html.add(" <td colspan='6' style='color: #00FF00;'>OK <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+								html.add(" <td bgcolor='#abffab'>OK <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						else:
 							if hoststamp in inventory["hosts"][host] and "msg" in inventory["hosts"][host][hoststamp]:
-								html.add(" <td colspan='6' style='color: #FF0000;'>" + inventory["hosts"][host][hoststamp]["msg"].strip() + "</td>\n")
+								html.add(" <td colspan='5' bgcolor='#ffabab'>" + inventory["hosts"][host][hoststamp]["msg"].strip() + "</td>\n")
 							else:
-								html.add(" <td colspan='6' style='color: #FF0000;'>NO SCANS FOUND</td>\n")
+								html.add(" <td bgcolor='#ffabab'>NO SCANS FOUND</td>\n")
 							if stamp != "0":
-								html.add(" <td colspan='6' style='color: #FF0000;'>ERR <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+								html.add(" <td bgcolor='#ffabab'>ERR <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						if stamp == "0":
-							html.add(" <td>" + inventory["hosts"][host]["status"] + " " + datetime.fromtimestamp(int(inventory["hosts"][host]["last"])).strftime("%a %d. %b %Y %H:%M:%S") + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+							if inventory["hosts"][host]["status"] != "OK":
+								html.add(" <td bgcolor='#ffffab'>" + inventory["hosts"][host]["status"] + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+							else:
+								html.add(" <td bgcolor='#abffab'>" + inventory["hosts"][host]["status"] + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+
+						if self.livestatus != "":
+							lstatus = -1
+							ln_c = 0
+							ln_w = 0
+							ln_u = 0
+							for part in lsdata:
+								if part["host_name"] == host:
+									if part["acknowledged"] == 0:
+										if part["state"] == 1:
+											ln_w += 1
+										elif part["state"] == 2:
+											ln_c += 1
+										elif part["state"] == 3:
+											ln_u += 1
+										if lstatus < part["state"]:
+											lstatus = part["state"]
+							if lstatus == -1:
+								html.add("<td bgcolor='#ff0000'>MISS</td>\n")
+							elif lstatus == 0:
+								html.add("<td bgcolor='#abffab'>OK</td>\n")
+							elif lstatus == 1:
+								html.add("<td bgcolor='#ffffab'>" + str(ln_w) + "/" + str(ln_c) + "/" + str(ln_u) + "</td>\n")
+							elif lstatus == 2:
+								html.add("<td bgcolor='#ffabab'>" + str(ln_w) + "/" + str(ln_c) + "/" + str(ln_u) + "</td>\n")
+							elif lstatus == 3:
+								html.add("<td bgcolor='#ababab'>" + str(ln_w) + "/" + str(ln_c) + "/" + str(ln_u) + "</td>\n")
+							else:
+								html.add("<td bgcolor='#abffff'>" + str(ln_w) + "/" + str(ln_c) + "/" + str(ln_u) + "</td>\n")
+
+						if self.mantisbt != "":
+							tickets = 0
+							for issue in issues:
+								if "tags" in issue:
+									for tag in issue["tags"]:
+										if tag["name"] == "server:" + host:
+											issue["match"] = True
+											tickets += 1
+										elif tag["name"] == "server:" + inventory["hosts"][host]["0"]["ansible_facts"]["ansible_fqdn"]:
+											tickets += 1
+							if tickets > 0:
+								html.add(" <td bgcolor='#ababff'>" + str(tickets) + "</td>\n")
+							else:
+								html.add(" <td bgcolor='#abffab'>" + str(tickets) + "</td>\n")
+
 						html.add("</tr>\n")
 						if searchinfo != "":
-							html.add("<tr><td colspan='9' style='color: #999999;'>")
+							colspan = 3
+							if self.pnp4nagios != "":
+								colspan += 1
+							if self.livestatus != "":
+								colspan += 1
+							if self.mantisbt != "":
+								colspan += 1
+							html.add("<tr><td colspan='" + str(len(options) + colspan) + "' style='color: #999999;'>")
 							html.add(searchinfo)
 							html.add("</td></tr>\n")
 		html.add(bs_table_end())
@@ -1376,12 +1721,81 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return
 
 
+
+	def show_elements(self, graph, parent, name, data, prefix = ""):
+		num = 0
+		html = ""
+		#html += prefix + "" + name + "" + "<br />"
+		if type(data) == list:
+			for element in data:
+				if type(element) != dict and type(element) != list:
+					graph.node_add(prefix + str(num), str(element), "")
+					graph.edge_add(parent, prefix + str(num))
+				else:
+					graph.node_add(prefix + "####" + str(num), "" + str(num), "")
+					graph.edge_add(parent, prefix + "####" + str(num))
+					html += self.show_elements(graph, prefix + "####" + str(num), "####", element, prefix + "--" + str(num))
+				num += 1
+		elif type(data) == dict:
+			for element in data:
+				if type(data[element]) != dict and type(data[element]) != list:
+					icon = ""
+					if element == "hosts":
+						icon = "monitor"
+					elif element == "name":
+						icon = "information"
+					elif element == "remote_user":
+						icon = "remote"
+					graph.node_add(str(prefix) + str(num), str(element) + ":\\n" + str(data[element]), icon)
+					graph.edge_add(parent, prefix + str(num))
+				else:
+					icon = ""
+					if element == "hosts":
+						icon = "monitor"
+					elif element == "roles":
+						icon = "rollerblade"
+					graph.node_add(prefix + element, element, icon)
+					graph.edge_add(parent, prefix + element)
+					html += self.show_elements(graph, prefix + element, element, data[element], prefix + "--" + str(num))
+				num += 1
+		else:
+			#html += prefix + "&nbsp;" + str(data) + "<br />"
+			graph.node_add(prefix + str(data), str(data), "")
+			graph.edge_add(parent, prefix + str(data))
+
+		return html
+
+
+
+	def show_playbooks(self):
+		html = HtmlPage("Playbooks", "Playbooks", "", "");
+		graph = VisGraph("visgraph", "800px")
+
+		for playbook in glob.glob("playbooks/mongodb/*.yml"):
+			#html.add(playbook + "<br />")
+
+			graph.node_add(playbook, playbook, "monitor")
+
+			with open(playbook) as file:
+				data = yaml.load(file)
+				html.add(self.show_elements(graph, playbook, "####", data))
+			break
+
+		html.add(graph.end(direction = "UD"))
+
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes(html.end(), "utf8"))
+		return
+
+
+
 	def do_GET(self):
-		print(self.path)
 		opts = {}
 		opts["stamp"] = "0"
 		if "?" in self.path:
-			for opt in self.path.split("?")[1].split("&"):
+			for opt in urllib.parse.unquote(self.path).split("?")[1].split("&"):
 				name = opt.split("=")[0]
 				value = opt.split("=")[1]
 				opts[name] = value
@@ -1447,6 +1861,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			self.end_headers()
 			self.wfile.write(bytes(html.end(), "utf8"))
 			return
+		elif self.path.startswith("/mantisbt_add"):
+			self.mantisbt_issues_post(opts)
+			return
 		elif self.path.startswith("/hosts"):
 			if "group" not in opts:
 				opts["group"] = "all"
@@ -1456,6 +1873,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return
 		elif self.path.startswith("/stats"):
 			self.show_stats(opts["stamp"])
+			return
+		elif self.path.startswith("/playbooks"):
+			self.show_playbooks()
 			return
 		elif self.path.startswith("/inventory"):
 			self.show_inventory()
@@ -1652,8 +2072,14 @@ def inventory_read(timestamp = 0):
 
 
 def run():
-	print('starting server...')
-	server_address = ('127.0.0.1', 8081)
+	vasetup = {}
+	vasetup["ip"] = "127.0.0.1"
+	vasetup["port"] = 8081
+	if os.path.isfile("setup.json"):
+		with open("setup.json") as json_file:
+			vasetup = json.load(json_file)
+	print("starting server (http://" + vasetup["ip"] + ":" + str(vasetup["port"]) + ")...")
+	server_address = (vasetup["ip"], vasetup["port"])
 	httpd = HTTPServer(server_address, HTTPServer_RequestHandler)
 	print('running server...')
 	httpd.serve_forever()

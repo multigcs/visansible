@@ -1,0 +1,19 @@
+{
+	"ip": "127.0.0.1",
+	"port": 8081,
+	"checkmk": {
+		"enable": false,
+		"duration": 12,
+		"baseurl": "http://192.168.122.12/testnetz",
+		"livestatus": {
+			"ip": "192.168.122.12",
+			"port": 6557
+		}
+	},
+	"mantisbt": {
+		"enable": false,
+		"baseurl": "http://localhost/mantisbt",
+		"token": "N60pjYr9iCJFLDjcpqJjGZS-yUbzyQ6B",
+		"project": 1
+	}
+}

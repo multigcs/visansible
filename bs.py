@@ -14,6 +14,7 @@ osicons = {
 	"OpenWrt": "router-wireless",
 	"Windows": "windows",
 	"Darwin": "apple",
+	"OmniOS": "omnios",
 }
 
 

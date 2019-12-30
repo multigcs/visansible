@@ -414,12 +414,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	def show_host_graph_disks(self, graph, facts, parentnode):
 		test = False
 		if "ansible_devices" in facts:
-			for device in facts["ansible_devices"]:
-				if type(facts["ansible_devices"][device]) is list:
-					for partition in facts["ansible_devices"][device]:
-						test = True
-				if "partitions" in facts["ansible_devices"][device]:
-						test = True
+			if type(facts["ansible_devices"]) is dict:
+				for device in facts["ansible_devices"]:
+					if type(facts["ansible_devices"][device]) is list:
+						for partition in facts["ansible_devices"][device]:
+							test = True
+					if "partitions" in facts["ansible_devices"][device]:
+							test = True
 		if test == False:
 			if "ansible_mounts" in facts:
 				for mount in facts["ansible_mounts"]:
@@ -435,13 +436,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if mtest in mount["mount"] and mount["mount"] != mount_parent["mount"]:
 							if len(mparent) < len(mount_parent["mount"]):
 								mparent = mount_parent["mount"]
-
-
 					if mparent != "":
 						graph.edge_add(parentnode + "_mount_" + mparent, parentnode + "_mount_" + mount["mount"])
-
-
-
 			return
 		vg2pv = {}
 		if "ansible_lvm" in facts:

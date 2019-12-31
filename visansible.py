@@ -15,6 +15,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 import socket
 import requests
+import spice
 
 import subprocess
 from HtmlPage import *
@@ -504,8 +505,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					graph.node_add(parentnode + "_hostctrl_" + hostctrl, hostctrl.replace(":", "\\n"), "scsi")
 					graph.edge_add(parentnode, parentnode + "_hostctrl_" + hostctrl)
 					## show disk ##
-					vendor = str(facts["ansible_devices"][device]["vendor"])
-					model = str(facts["ansible_devices"][device]["model"])
+					vendor = ""
+					model = ""
+					if "vendor" in facts["ansible_devices"][device]:
+						vendor = str(facts["ansible_devices"][device]["vendor"])
+					if "model" in facts["ansible_devices"][device]:
+						model = str(facts["ansible_devices"][device]["model"])
 					size = facts["ansible_devices"][device]["size"]
 					if size != "0.00 Bytes":
 						if "model" in facts["ansible_devices"][device] and ("DVD" in str(facts["ansible_devices"][device]["model"]) or "CD" in str(facts["ansible_devices"][device]["model"])):
@@ -535,13 +540,15 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							graph.edge_add(parentnode + "_hostctrl_" + hostctrl, parentnode + "_disk_" + device)
 						## show partitions ##
 						for partition in facts["ansible_devices"][device]["partitions"]:
-							uuid = facts["ansible_devices"][device]["partitions"][partition]["uuid"]
+							uuid = ""
+							if "uuid" in facts["ansible_devices"][device]["partitions"][partition]:
+								uuid = facts["ansible_devices"][device]["partitions"][partition]["uuid"]
 							size = facts["ansible_devices"][device]["partitions"][partition]["size"]
 							graph.node_add(parentnode + "_partition_" + str(partition), str(partition) + "\\n" + str(uuid) + "\\n" + str(size), "partition")
 							graph.edge_add(parentnode + "_disk_" + device, parentnode + "_partition_" + partition)
 							## show partition-mounts ##
 							for mount in facts["ansible_mounts"]:
-								if facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and mount["uuid"] != None:
+								if "uuid" in facts["ansible_devices"][device]["partitions"][partition] and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and "uuid" in mount and mount["uuid"] != None:
 									if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
 										graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
 										graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
@@ -739,7 +746,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								html += bs_add("</tr>")
 						## show mounts ##
 						for mount in facts["ansible_mounts"]:
-							if facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and mount["uuid"] != None:
+							if "uuid" in facts["ansible_devices"][device]["partitions"][partition] and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and "uuid" in mount and mount["uuid"] != "N/A" and mount["uuid"] != None:
 								if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
 									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
 									html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
@@ -1091,6 +1098,75 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return links
 
 
+	def libvirt_get_name(self, host):
+		macs = []
+		if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
+			for part in inventory["hosts"][host]["0"]["ansible_facts"]:
+				if part != "ansible_default_ipv4" and type(inventory["hosts"][host]["0"]["ansible_facts"][part]) is dict and "device" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
+					if "macaddress" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
+						macs.append(inventory["hosts"][host]["0"]["ansible_facts"][part]["macaddress"].lower())
+		if len(macs) > 0:
+			domlist = os.popen("virsh list --all 2>&1").read()
+			for line in domlist.split("\n"):
+				if " " in line and not line.strip().startswith("Id"):
+					name = line.split()[1]
+					domiflist = os.popen("virsh domiflist " + name + " 2>&1").read()
+					for ifline in domiflist.split("\n"):
+						if ":" in ifline:
+							if ifline.split()[4].lower() in macs:
+								return name
+
+
+
+
+
+
+		return ""
+
+
+	def libvirt_action(self, host, action):
+		vmname = self.libvirt_get_name(host)
+		html = HtmlPage("Visansible <small>Spice-Console</small>", "", "", "");
+		html.add("<meta http-equiv=\"refresh\" content=\"1; url=/host?host=" + host + "\">")
+		if vmname != "":
+			html.add("<h2>")
+			html.add(vmname)
+			html.add(" - ")
+			html.add(action) 
+			html.add("</h2>")
+			html.add("<br />")
+			result = os.popen("virsh " + action + " " + vmname + " 2>&1").read()
+			html.add("<b><p>" + result + "</p></b>")
+		else:
+			html.add("<h3>ERROR: host not found in libvirt</h3>")
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes(html.end(), "utf8"))
+		return
+
+
+	def show_spice(self, host):
+		vmname = self.libvirt_get_name(host)
+		html = HtmlPage("Visansible <small>Spice-Console</small>", "", "", "");
+		if vmname != "":
+			html.add(bs_row_begin())
+			html.add(bs_col_begin("12"))
+			html.add(bs_card_begin("Spice", "monitor"))
+			Spice = spice.Spice(vmname)
+			html.add(Spice.show())
+			html.add(bs_card_end())
+			html.add(bs_col_end())
+			html.add(bs_row_end())
+		else:
+			html.add("<h3>ERROR: host not found in libvirt</h3>")
+		self.send_response(200)
+		self.send_header("Content-type", "text/html")
+		self.end_headers()
+		self.wfile.write(bytes(html.end(), "utf8"))
+		return
+
+
 	def show_hostdata(self, host, stamp = "0"):
 		links = self.show_history(stamp, host)
 		groups = " Groups: "
@@ -1104,6 +1180,37 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			osfamily = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_os_family"]
 			distribution = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_distribution"]
 			icon = osicons_get(osfamily, distribution)
+
+			## VM-Control ##
+			if "ansible_virtualization_type" in inventory["hosts"][host][stamp]["ansible_facts"] and (inventory["hosts"][host][stamp]["ansible_facts"]["ansible_virtualization_type"] == "kvm" or inventory["hosts"][host][stamp]["ansible_facts"]["ansible_virtualization_type"] == "xen"):
+				vmname = self.libvirt_get_name(host)
+				if vmname != "":
+					dominfo = os.popen("virsh dominfo " + vmname + " 2>&1").read()
+					vmstate = ""
+					for line in dominfo.split("\n"):
+						if line.startswith("State:"):
+							vmstate = line.split(":", 1)[1].strip()
+					if vmstate != "":
+						html.add(bs_row_begin())
+						html.add(bs_col_begin("12"))
+						html.add(bs_card_begin("VM-Control: " + vmstate))
+						html.add("<a title='Show Screen' target='_blank' href='/spice?host=" + host + "'><img src='assets/MaterialDesignIcons/monitor.svg'></a>&nbsp;&nbsp;&nbsp;")
+						html.add("<a title='Start VM' href='/libvirt?host=" + host + "&action=start'><img src='assets/MaterialDesignIcons/play.svg'></a>&nbsp;&nbsp;&nbsp;")
+						if vmstate == "paused":
+							html.add("<a title='Resume VM' href='/libvirt?host=" + host + "&action=resume'><img src='assets/MaterialDesignIcons/pause.svg'></a>&nbsp;&nbsp;&nbsp;")
+						else:
+							html.add("<a title='Suspend VM' href='/libvirt?host=" + host + "&action=suspend'><img src='assets/MaterialDesignIcons/pause.svg'></a>&nbsp;&nbsp;&nbsp;")
+						html.add("<a title='Destroy VM (Stop)' href='/libvirt?host=" + host + "&action=destroy'><img src='assets/MaterialDesignIcons/stop.svg'></a>&nbsp;&nbsp;&nbsp;")
+						for line in dominfo.split("\n"):
+							if ":" in line:
+								key = line.split(":", 1)[0].strip()
+								if key in ["Name", "State", "CPU(s)", "Used memory", "Autostart"]:
+									value = line.split(":", 1)[1].strip()
+									html.add("<b>" + key + "</b>=" + value + "&nbsp;&nbsp;&nbsp;&nbsp;")
+						html.add(bs_card_end())
+						html.add(bs_col_end())
+						html.add(bs_row_end())
+
 			## System ##
 			html.add(bs_row_begin())
 			html.add(self.show_host_table_general(inventory["hosts"][host][stamp]["ansible_facts"]))
@@ -1117,8 +1224,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add(bs_card_end())
 			html.add(bs_col_end())
 			html.add(bs_row_end())
-
-
 
 			## Tickets ##
 			if self.mantisbt != "" or self.livestatus != "":
@@ -1233,7 +1338,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 			if self.mantisbt != "" or self.livestatus != "":
 				html.add(bs_row_end())
-
 
 			## CheckMK-Graphs ##
 			if self.pnp4nagios != "":
@@ -1962,6 +2066,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return
 		elif self.path.startswith("/groups"):
 			self.show_graph("group", opts["stamp"])
+			return
+		elif self.path.startswith("/libvirt"):
+			if "host" in opts and "action" in opts:
+				self.libvirt_action(opts["host"], opts["action"])
+			return
+		elif self.path.startswith("/spice"):
+			if "host" in opts:
+				self.show_spice(opts["host"])
 			return
 		elif self.path.startswith("/host"):
 			if "host" in opts:

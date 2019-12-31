@@ -27,13 +27,13 @@ def osicons_get(osfamily, distribution = ""):
 	else:
 		return "monitor"
 
-def bs_card_begin(title, icon = ""):
+def bs_card_begin(title = "", icon = ""):
 	global hprefix
 	html = ""
 	html += hprefix + "<div class='card'>\n"
 	if icon != "":
 		html += hprefix + " <div class='card-header'>" + title + "<img class='float-right' src='assets/MaterialDesignIcons/" + icon + ".svg'></div>\n"
-	else:
+	elif title != "":
 		html += hprefix + " <div class='card-header'>" + title + "</div>\n"
 	html += hprefix + " <div class='card-body'>\n"
 	hprefix += " "

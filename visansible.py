@@ -391,8 +391,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							graph.edge_add(parentnode + "_iface_" + interface, parentnode + "_iface_" + device)
 					else:
 						graph.edge_add(parentnode, parentnode + "_iface_" + device)
-
 		## Windows ##
+		ips_show = False
 		if "ansible_interfaces" in facts and type(facts["ansible_interfaces"]) is list:
 			## default_gateway
 			for iface in facts["ansible_interfaces"]:
@@ -406,20 +406,32 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if simple == False:
 							graph.node_add(parentnode + "_iface_" + device, device + "\\n" + macaddress, "port")
 							graph.edge_add(parentnode, parentnode + "_iface_" + device)
-		if "ansible_ip_addresses" in facts:
-			for address in facts["ansible_ip_addresses"]:
-				if ":" in address:
-					if simple == False:
-						graph.node_add(parentnode + "_ipv6_" + address, address, "ipv6")
-						graph.edge_add(parentnode, parentnode + "_ipv6_" + address)
-				else:
-					graph.node_add(parentnode + "_ipv4_" + address, address, "ipv4")
-					graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
-
-					network = ".".join(address.split(".")[:3]) + ".0"
-					graph.node_add("network_" + network, network, "net");
-					graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
-
+						print("#####")
+						if "ipaddresses" in iface and type(iface["ipaddresses"]) is list:
+							ips_show = True
+							for address in iface["ipaddresses"]:
+								if ":" not in address:
+									graph.node_add(parentnode + "_ipv4_" + address, address, "ipv4")
+									graph.edge_add(parentnode + "_iface_" + device, parentnode + "_ipv4_" + address)
+									network = ".".join(address.split(".")[:3]) + ".0"
+									graph.node_add("network_" + network, network, "net");
+									graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
+								else:
+									graph.node_add(parentnode + "_ipv4_" + address, address, "ipv4")
+									graph.edge_add(parentnode + "_iface_" + device, parentnode + "_ipv4_" + address)
+		if ips_show == False:
+			if "ansible_ip_addresses" in facts:
+				for address in facts["ansible_ip_addresses"]:
+					if ":" in address:
+						if simple == False:
+							graph.node_add(parentnode + "_ipv6_" + address, address, "ipv6")
+							graph.edge_add(parentnode, parentnode + "_ipv6_" + address)
+					else:
+						graph.node_add(parentnode + "_ipv4_" + address, address, "ipv4")
+						graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
+						network = ".".join(address.split(".")[:3]) + ".0"
+						graph.node_add("network_" + network, network, "net");
+						graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
 
 
 	def show_host_graph_disks(self, graph, facts, parentnode):
@@ -434,21 +446,22 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							test = True
 		if test == False:
 			if "ansible_mounts" in facts:
-				for mount in facts["ansible_mounts"]:
-					graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-					if mount["mount"] == "/":
-						graph.edge_add(parentnode, parentnode + "_mount_" + mount["mount"])
+				if "ansible_mounts" in facts:
+					for mount in facts["ansible_mounts"]:
+						graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+						if mount["mount"] == "/":
+							graph.edge_add(parentnode, parentnode + "_mount_" + mount["mount"])
 
-					mparent = ""
-					for mount_parent in facts["ansible_mounts"]:
-						mtest = mount_parent["mount"]
-						if mtest != "/":
-							mtest = mount_parent["mount"] + "/"
-						if mtest in mount["mount"] and mount["mount"] != mount_parent["mount"]:
-							if len(mparent) < len(mount_parent["mount"]):
-								mparent = mount_parent["mount"]
-					if mparent != "":
-						graph.edge_add(parentnode + "_mount_" + mparent, parentnode + "_mount_" + mount["mount"])
+						mparent = ""
+						for mount_parent in facts["ansible_mounts"]:
+							mtest = mount_parent["mount"]
+							if mtest != "/":
+								mtest = mount_parent["mount"] + "/"
+							if mtest in mount["mount"] and mount["mount"] != mount_parent["mount"]:
+								if len(mparent) < len(mount_parent["mount"]):
+									mparent = mount_parent["mount"]
+						if mparent != "":
+							graph.edge_add(parentnode + "_mount_" + mparent, parentnode + "_mount_" + mount["mount"])
 			return
 		vg2pv = {}
 		if "ansible_lvm" in facts:
@@ -472,10 +485,11 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					graph.node_add(parentnode + "_lvs_" + lv, "LVM-LV\\n" + lv, "partition")
 					graph.edge_add(parentnode + "_vgs_" + vg, parentnode + "_lvs_" + lv)
 					## show disk-mounts ##
-					for mount in facts["ansible_mounts"]:
-						if mount["device"] == lv_device:
-							graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-							graph.edge_add(parentnode + "_lvs_" + lv, parentnode + "_mount_" + mount["mount"])
+					if "ansible_mounts" in facts:
+						for mount in facts["ansible_mounts"]:
+							if mount["device"] == lv_device:
+								graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+								graph.edge_add(parentnode + "_lvs_" + lv, parentnode + "_mount_" + mount["mount"])
 		for device in facts["ansible_devices"]:
 			if type(facts["ansible_devices"][device]) is list:
 				if device.startswith("cd"):
@@ -487,15 +501,17 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					graph.node_add(parentnode + "_partition_" + str(partition), str(partition), "partition")
 					graph.edge_add(parentnode + "_disk_" + device, parentnode + "_partition_" + partition)
 					## show partition-mounts ##
-					for mount in facts["ansible_mounts"]:
-						if mount["device"] == "/dev/" + partition:
-							graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-							graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
+					if "ansible_mounts" in facts:
+						for mount in facts["ansible_mounts"]:
+							if mount["device"] == "/dev/" + partition:
+								graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+								graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
 				## show disk-mounts ##
-				for mount in facts["ansible_mounts"]:
-					if mount["device"] == "/dev/" + device:
-						graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-						graph.edge_add(parentnode + "_disk_" + device, parentnode + "_mount_" + mount["mount"])
+				if "ansible_mounts" in facts:
+					for mount in facts["ansible_mounts"]:
+						if mount["device"] == "/dev/" + device:
+							graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+							graph.edge_add(parentnode + "_disk_" + device, parentnode + "_mount_" + mount["mount"])
 			if "partitions" in facts["ansible_devices"][device]:
 				if not device.startswith("loops") and (len(vg2pv) == 0 or not device.startswith("dm-") ):
 					## show host controller ##
@@ -546,23 +562,30 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							size = facts["ansible_devices"][device]["partitions"][partition]["size"]
 							graph.node_add(parentnode + "_partition_" + str(partition), str(partition) + "\\n" + str(uuid) + "\\n" + str(size), "partition")
 							graph.edge_add(parentnode + "_disk_" + device, parentnode + "_partition_" + partition)
+							if "drive_letter" in facts["ansible_devices"][device]["partitions"][partition] and facts["ansible_devices"][device]["partitions"][partition]["drive_letter"] != None:
+								dletter = facts["ansible_devices"][device]["partitions"][partition]["drive_letter"]
+								fstype = facts["ansible_devices"][device]["partitions"][partition]["type"]
+								graph.node_add(parentnode + "_mount_" + dletter, dletter + "\\n" + fstype + "\\n" + "device", "folder-open")
+								graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + dletter)
 							## show partition-mounts ##
-							for mount in facts["ansible_mounts"]:
-								if "uuid" in facts["ansible_devices"][device]["partitions"][partition] and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and "uuid" in mount and mount["uuid"] != None:
-									if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
-										graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-										graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
-								else:
-									if mount["device"] == "/dev/" + partition:
-										graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-										graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
+							if "ansible_mounts" in facts:
+								for mount in facts["ansible_mounts"]:
+									if "uuid" in facts["ansible_devices"][device]["partitions"][partition] and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and mount["uuid"] != "N/A" and "uuid" in mount and mount["uuid"] != None:
+										if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
+											graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+											graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
+									else:
+										if mount["device"] == "/dev/" + partition:
+											graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+											graph.edge_add(parentnode + "_partition_" + partition, parentnode + "_mount_" + mount["mount"])
 						## show disk-mounts ##
-						for mount in facts["ansible_mounts"]:
-							if "links" in facts["ansible_devices"][device] and "uuids" in facts["ansible_devices"][device]["links"]:
-								for disk_uuid in facts["ansible_devices"][device]["links"]["uuids"]:
-									if mount["uuid"] == disk_uuid:
-										graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-										graph.edge_add(parentnode + "_disk_" + device, parentnode + "_mount_" + mount["mount"])
+						if "ansible_mounts" in facts:
+							for mount in facts["ansible_mounts"]:
+								if "links" in facts["ansible_devices"][device] and "uuids" in facts["ansible_devices"][device]["links"]:
+									for disk_uuid in facts["ansible_devices"][device]["links"]["uuids"]:
+										if mount["uuid"] == disk_uuid:
+											graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
+											graph.edge_add(parentnode + "_disk_" + device, parentnode + "_mount_" + mount["mount"])
 
 
 	def show_host_table_ifaces(self, facts):
@@ -623,7 +646,21 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += bs_table_end()
 					html += bs_col_end()
 					html += bs_col_begin("6")
-					html += "----"
+					if "ipaddresses" in iface and type(iface["ipaddresses"]) is list:
+						html += bs_add("<b>IPv4:</b>")
+						html += bs_add("<br />")
+						for address in iface["ipaddresses"]:
+							if ":" not in address:
+								html += bs_add(address)
+								html += bs_add("<br />")
+						html += bs_add("<br />")
+						html += bs_add("<b>IPv6:</b>")
+						html += bs_add("<br />")
+						for address in iface["ipaddresses"]:
+							if ":" in address:
+								html += bs_add(address)
+								html += bs_add("<br />")
+						html += bs_add("<br />")
 					html += bs_col_end()
 					html += bs_row_end()
 					html += bs_card_end()
@@ -656,24 +693,26 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				## show disk ##
 				html += bs_col_begin("6")
 				html += bs_add("<b>Disk: " + device + "</b>")
-				html += bs_table_begin()
-				for mount in facts["ansible_mounts"]:
-					if mount["device"] == "/dev/" + device:
-						html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
-						html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
-				html += bs_table_end()
+				if "ansible_mounts" in facts:
+					html += bs_table_begin()
+					for mount in facts["ansible_mounts"]:
+						if mount["device"] == "/dev/" + device:
+							html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
+							html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+					html += bs_table_end()
 				html += bs_col_end()
 				## show partitions ##
 				html += bs_col_begin("6")
 				for partition in facts["ansible_devices"][device]:
 					html += bs_add("<b>Partition: " + partition + "</b>")
-					html += bs_table_begin()
-					## show mounts ##
-					for mount in facts["ansible_mounts"]:
-						if mount["device"] == "/dev/" + partition:
-							html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
-							html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
-					html += bs_table_end()
+					if "ansible_mounts" in facts:
+						html += bs_table_begin()
+						## show mounts ##
+						for mount in facts["ansible_mounts"]:
+							if mount["device"] == "/dev/" + partition:
+								html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
+								html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+						html += bs_table_end()
 					bs_add("<br />")
 				html += bs_col_end()
 				html += bs_row_end()
@@ -693,12 +732,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += bs_table_begin()
 					html += facts2rows(facts["ansible_devices"][device], ["host", "vendor", "model", "serial", "size"])
 					## show disk-mounts ##
-					for mount in facts["ansible_mounts"]:
-						if "links" in facts["ansible_devices"][device] and "uuids" in facts["ansible_devices"][device]["links"]:
-							for disk_uuid in facts["ansible_devices"][device]["links"]["uuids"]:
-								if mount["uuid"] == disk_uuid:
-									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
-									html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+					if "ansible_mounts" in facts:
+						for mount in facts["ansible_mounts"]:
+							if "links" in facts["ansible_devices"][device] and "uuids" in facts["ansible_devices"][device]["links"]:
+								for disk_uuid in facts["ansible_devices"][device]["links"]["uuids"]:
+									if mount["uuid"] == disk_uuid:
+										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"])
+										html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
 
 					## check if device is slave of another disk ##
 					for device2 in facts["ansible_devices"]:
@@ -736,7 +776,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						html += bs_add("<b>Partition: " + partition + "</b>")
 						html += bs_table_begin()
 						## show partition ##
-						html += facts2rows(facts["ansible_devices"][device]["partitions"][partition], ["uuid", "size", "start", "sectors", "sectorsize"])
+						html += facts2rows(facts["ansible_devices"][device]["partitions"][partition], ["uuid", "size", "start", "sectors", "sectorsize", "drive_letter"])
 						## show partition slaves ##
 						if "links" in facts["ansible_devices"][device]["partitions"][partition] and "masters" in facts["ansible_devices"][device]["partitions"][partition]["links"]:
 							for master in facts["ansible_devices"][device]["partitions"][partition]["links"]["masters"]:
@@ -745,15 +785,16 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								html += bs_add(" <td>" + master + "</td>")
 								html += bs_add("</tr>")
 						## show mounts ##
-						for mount in facts["ansible_mounts"]:
-							if "uuid" in facts["ansible_devices"][device]["partitions"][partition] and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and "uuid" in mount and mount["uuid"] != "N/A" and mount["uuid"] != None:
-								if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
-									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
-									html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
-							else:
-								if mount["device"] == "/dev/" + partition:
-									html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
-									html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+						if "ansible_mounts" in facts:
+							for mount in facts["ansible_mounts"]:
+								if "uuid" in facts["ansible_devices"][device]["partitions"][partition] and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != None and facts["ansible_devices"][device]["partitions"][partition]["uuid"] != "N/A" and "uuid" in mount and mount["uuid"] != "N/A" and mount["uuid"] != None:
+									if mount["uuid"] == facts["ansible_devices"][device]["partitions"][partition]["uuid"]:
+										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
+										html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+								else:
+									if mount["device"] == "/dev/" + partition:
+										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
+										html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
 						html += bs_table_end()
 						bs_add("<br />")
 					html += bs_col_end()
@@ -793,10 +834,11 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 								html += bs_table_begin()
 								html += facts2rows(facts["ansible_lvm"]["lvs"][lv], ["size_g"])
 								## show mounts ##
-								for mount in facts["ansible_mounts"]:
-									if mount["device"] == lv_device:
-										html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
-										html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
+								if "ansible_mounts" in facts:
+									for mount in facts["ansible_mounts"]:
+										if mount["device"] == lv_device:
+											html += facts2rows(mount, ["mount", "fstype", "device", "size_available", "options", "uuid"], "&nbsp;&nbsp;&nbsp;")
+											html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
 								html += bs_table_end()
 								bs_add("<br />")
 					html += bs_col_end()
@@ -955,25 +997,26 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		for timestamp in sorted(set(stamps)):
 			if stamp == "0" or int(timestamp) <= int(stamp):
 				labels.append("")
-		mount_n = 0
-		for mount in facts["ansible_mounts"]:
-			units.append(mount["mount"])
-			last = 0
-			data = []
-			for timestamp in sorted(set(stamps)):
-				if hostname in inventory["hosts"] and timestamp in inventory["hosts"][hostname]:
-					if "ansible_facts" in inventory["hosts"][hostname][timestamp]:
-						if "ansible_mounts" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
-							if mount_n < len(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"]):
-								if "size_available" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]:
-									if int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"]) > 0:
-										value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
-									else:
-										value = 0
-									last = 100 - value
-				data.append(last)
-			datas.append(data)
-			mount_n += 1
+		if "ansible_mounts" in facts:
+			mount_n = 0
+			for mount in facts["ansible_mounts"]:
+				units.append(mount["mount"])
+				last = 0
+				data = []
+				for timestamp in sorted(set(stamps)):
+					if hostname in inventory["hosts"] and timestamp in inventory["hosts"][hostname]:
+						if "ansible_facts" in inventory["hosts"][hostname][timestamp]:
+							if "ansible_mounts" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
+								if mount_n < len(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"]):
+									if "size_available" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]:
+										if int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"]) > 0:
+											value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
+										else:
+											value = 0
+										last = 100 - value
+					data.append(last)
+				datas.append(data)
+				mount_n += 1
 		html += self.show_chart("lcmounts", labels, datas, units)
 		return html
 
@@ -1402,6 +1445,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html.add("<b>" + inventory["hosts"][host][stamp]["msg"].strip() + "</b>\n")
 			else:
 				html.add("<b>NO SCANS FOUND</b>\n")
+
+
+
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
 		self.end_headers()
@@ -1502,8 +1548,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html.add("  <h2>Group: " + group + " </h2>\n")
 					html.add("  <a href='rescan?host=" + group + "'>[RESCAN]<a/>\n")
 					for section in inventory["groups"][group]["options"]:
-						for var in inventory["groups"][group]["options"][section]:
-							html.add("<small>" + var + "=" + inventory["groups"][group]["options"][section][var] + " </small>")
+						print(section, type(inventory["groups"][group]["options"][section]))
+						if type(inventory["groups"][group]["options"][section]) == dict:
+							for var in inventory["groups"][group]["options"][section]:
+								html.add("<small>" + section + ":" + var + "=" + inventory["groups"][group]["options"][section][var] + " </small>")
+						else:
+							for var in inventory["groups"][group]["options"][section]:
+								html.add("<small>" + section + ":" + var + " </small>")
 					html.add(" </td>\n")
 					html.add("</tr>\n")
 					html.add("<tr>\n")
@@ -2208,10 +2259,16 @@ def inventory_read(timestamp = 0):
 				inventory["groups"][group]["options"] = {}
 			misc = False
 		elif misc == True and line.strip() != "":
-			name = line.split("=")[0].strip()
-			value = line.split("=")[1].strip()
-			inventory["groups"][group]["options"][section] = {}
-			inventory["groups"][group]["options"][section][name] = value
+			if "=" in line:
+				name = line.split("=")[0].strip()
+				value = line.split("=")[1].strip()
+				if section not in inventory["groups"][group]["options"]:
+					inventory["groups"][group]["options"][section] = {}
+				inventory["groups"][group]["options"][section][name] = value
+			else:
+				if section not in inventory["groups"][group]["options"]:
+					inventory["groups"][group]["options"][section] = []
+				inventory["groups"][group]["options"][section].append(line.strip())
 		elif misc == False and line.strip() != "":
 			host = line.split(" ")[0]
 			host_options = line.split(" ")[1:]

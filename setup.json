@@ -2,7 +2,7 @@
 	"ip": "127.0.0.1",
 	"port": 8081,
 	"checkmk": {
-		"enable": true,
+		"enable": false,
 		"duration": 12,
 		"baseurl": "http://192.168.122.12/testnetz",
 		"livestatus": {
@@ -11,7 +11,7 @@
 		}
 	},
 	"mantisbt": {
-		"enable": true,
+		"enable": false,
 		"baseurl": "http://localhost/mantisbt",
 		"token": "N60pjYr9iCJFLDjcpqJjGZS-yUbzyQ6B",
 		"project": 1

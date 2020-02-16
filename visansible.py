@@ -207,35 +207,40 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		graph = VisGraph("visgraph", "800px")
 		self.color_n = 0
 		for host in inventory["hosts"]:
-			if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
+			invHost = inventory["hosts"][host]
+			if "0" in invHost and "ansible_facts" in invHost["0"]:
+				invHostLatestFacts = invHost["0"]["ansible_facts"]
 				if mode == "network":
-					self.show_host_graph_network_pre(graph, inventory["hosts"][host]["0"]["ansible_facts"], "host_" + host, stamp)
+					self.show_host_graph_network_pre(graph, invHostLatestFacts, "host_" + host, stamp)
 		for host in inventory["hosts"]:
-			for group in inventory["hosts"][host]["groups"]:
+			invHost = inventory["hosts"][host]
+			for group in invHost["groups"]:
 				if mode == "group":
 					graph.node_add("all", "all", "cloud")
 					graph.node_add("group_" + group, group, "table")
 					graph.edge_add("all", "group_" + group)
-				if stamp == "0" or int(stamp) >= int(inventory["hosts"][host]["first"]):
+				if stamp == "0" or int(stamp) >= int(invHost["first"]):
+					invHostLatest = invHost["0"]
 					if mode == "group":
 						graph.edge_add("group_" + group, "host_" + host)
-					if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
-						fqdn = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_fqdn"]
-						osfamily = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_os_family"]
-						distribution = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_distribution"]
+					if "0" in invHost and "ansible_facts" in invHostLatest:
+						invHostLatestFacts = invHostLatest["ansible_facts"]
+						fqdn = invHostLatestFacts["ansible_fqdn"]
+						osfamily = invHostLatestFacts["ansible_os_family"]
+						distribution = invHostLatestFacts["ansible_distribution"]
 						productname = ""
-						if "ansible_product_name" in inventory["hosts"][host]["0"]["ansible_facts"]:
-							productname = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_product_name"]
-						architecture = inventory["hosts"][host]["0"]["ansible_facts"]["ansible_architecture"]
+						if "ansible_product_name" in invHostLatestFacts:
+							productname = invHostLatestFacts["ansible_product_name"]
+						architecture = invHostLatestFacts["ansible_architecture"]
 						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
 						if mode == "network":
-							self.show_host_graph_network(graph, inventory["hosts"][host]["0"]["ansible_facts"], "host_" + host, stamp, True)
-					elif "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host]["0"]:
-						graph.node_add("host_" + host, host + "\\n" + inventory["hosts"][host]["0"]["msg"].strip().replace(":", "\\n").replace("'", "\'"), "monitor", "font: {color: '#FF0000'}")
+							self.show_host_graph_network(graph, invHostLatestFacts, "host_" + host, stamp, True)
+					elif "0" in invHost and "msg" in invHostLatest:
+						graph.node_add("host_" + host, host + "\\n" + invHostLatest["msg"].strip().replace(":", "\\n").replace("'", "\'"), "monitor", "font: {color: '#FF0000'}")
 					else:
 						if stamp == "0":
 							graph.node_add("host_" + host, host + "\\nNO SCANS FOUND", "monitor", "font: {color: '#FF0000'}")
-						print(json.dumps(inventory["hosts"][host], indent=4, sort_keys=True));
+						print(json.dumps(invHost, indent=4, sort_keys=True));
 		html.add(graph.end())
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
@@ -328,9 +333,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										else:
 											graph.edge_add("network_" + network, ipv4_ips[gateway_address], "color: { color: '" + ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
 					else:
-						address = facts[part]["ipv4"]["address"]
-						netmask = facts[part]["ipv4"]["netmask"]
-						network = facts[part]["ipv4"]["network"]
+						ipv4 = facts[part]["ipv4"]
+						address = ipv4["address"]
+						netmask = ipv4["netmask"]
+						network = ipv4["network"]
 						if address != "127.0.0.1":
 							if simple == False:
 								## show ipv4 ##
@@ -465,22 +471,23 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return
 		vg2pv = {}
 		if "ansible_lvm" in facts:
-			if "pvs" in facts["ansible_lvm"]:
-				for pv in facts["ansible_lvm"]["pvs"]:
-					vg = facts["ansible_lvm"]["pvs"][pv]["vg"]
+			facts_lvm = facts["ansible_lvm"]
+			if "pvs" in facts_lvm:
+				for pv in facts_lvm["pvs"]:
+					vg = facts_lvm["pvs"][pv]["vg"]
 					vg2pv[vg] = pv
 					graph.node_add(parentnode + "_pvs_" + pv, "LVM-PV\\n" + pv, "harddisk")
 					graph.edge_add(parentnode + "_partition_" + pv.replace("/dev/", ""), parentnode + "_pvs_" + pv)
-			if "vgs" in facts["ansible_lvm"]:
-				for vg in facts["ansible_lvm"]["vgs"]:
+			if "vgs" in facts_lvm:
+				for vg in facts_lvm["vgs"]:
 					graph.node_add(parentnode + "_vgs_" + vg, "LVM-VG\\n" + vg, "group")
 					if vg in vg2pv:
 						pv = vg2pv[vg]
 						graph.edge_add(parentnode + "_pvs_" + pv, parentnode + "_vgs_" + vg)
-			if "lvs" in facts["ansible_lvm"]:
-				for lv in facts["ansible_lvm"]["lvs"]:
+			if "lvs" in facts_lvm:
+				for lv in facts_lvm["lvs"]:
 					print(lv)
-					vg = facts["ansible_lvm"]["pvs"][pv]["vg"]
+					vg = facts_lvm["pvs"][pv]["vg"]
 					lv_device = "/dev/mapper/" + vg + "-" + lv
 					graph.node_add(parentnode + "_lvs_" + lv, "LVM-LV\\n" + lv, "partition")
 					graph.edge_add(parentnode + "_vgs_" + vg, parentnode + "_lvs_" + lv)
@@ -680,8 +687,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return html
 		dms = {}
 		if "ansible_lvm" in facts:
-			if "vgs" in facts["ansible_lvm"]:
-				for vg in facts["ansible_lvm"]["vgs"]:
+			facts_lvm = facts["ansible_lvm"]
+			if "vgs" in facts_lvm:
+				for vg in facts_lvm["vgs"]:
 					dms[0] = 0
 		if type(facts["ansible_devices"]) is list:
 			return html
@@ -802,37 +810,38 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html += bs_card_end()
 					html += bs_col_end()
 		if "ansible_lvm" in facts:
-			if "vgs" in facts["ansible_lvm"]:
-				for vg in facts["ansible_lvm"]["vgs"]:
-					vg_pv = facts["ansible_lvm"]["vgs"][vg]
+			facts_lvm = facts["ansible_lvm"]
+			if "vgs" in facts_lvm:
+				for vg in facts_lvm["vgs"]:
+					vg_pv = facts_lvm["vgs"][vg]
 					html += bs_col_begin("6")
 					html += bs_card_begin("LVM_VG: " + vg, "harddisk")
 					html += bs_row_begin()
 					html += bs_col_begin("6")
 					html += bs_add("<b>VG:</b>")
 					html += bs_table_begin()
-					html += facts2rows(facts["ansible_lvm"]["vgs"][vg], ["size_g", "free_g", "num_lvs", "num_pvs"])
-					if "pvs" in facts["ansible_lvm"]:
-						for pv in facts["ansible_lvm"]["pvs"]:
-							pv_vg = facts["ansible_lvm"]["pvs"][pv]["vg"]
+					html += facts2rows(facts_lvm["vgs"][vg], ["size_g", "free_g", "num_lvs", "num_pvs"])
+					if "pvs" in facts_lvm:
+						for pv in facts_lvm["pvs"]:
+							pv_vg = facts_lvm["pvs"][pv]["vg"]
 							if pv_vg == vg:
 								html += bs_add("<tr>")
 								html += bs_add(" <td>&nbsp;&nbsp;&nbsp;PV: </td>")
 								html += bs_add(" <td>" + pv + "</td>")
 								html += bs_add("</tr>")
-								html += facts2rows(facts["ansible_lvm"]["pvs"][pv], ["size_g", "free_g"], "&nbsp;&nbsp;&nbsp;")
+								html += facts2rows(facts_lvm["pvs"][pv], ["size_g", "free_g"], "&nbsp;&nbsp;&nbsp;")
 								html += bs_add("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>")
 					html += bs_table_end()
 					html += bs_col_end()
 					html += bs_col_begin("6")
-					if "lvs" in facts["ansible_lvm"]:
-						for lv in facts["ansible_lvm"]["lvs"]:
-							lv_vg = facts["ansible_lvm"]["lvs"][lv]["vg"]
+					if "lvs" in facts_lvm:
+						for lv in facts_lvm["lvs"]:
+							lv_vg = facts_lvm["lvs"][lv]["vg"]
 							if lv_vg == vg:
 								lv_device = "/dev/mapper/" + vg + "-" + lv
 								html += bs_add("<b>LV: " + lv + "</b>")
 								html += bs_table_begin()
-								html += facts2rows(facts["ansible_lvm"]["lvs"][lv], ["size_g"])
+								html += facts2rows(facts_lvm["lvs"][lv], ["size_g"])
 								## show mounts ##
 								if "ansible_mounts" in facts:
 									for mount in facts["ansible_mounts"]:
@@ -905,6 +914,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 	def show_host_table_memory_hist(self, facts, stamp, hostname):
+		invHost = inventory["hosts"][hostname][stamp]
 		html = ""
 		if "ansible_memory_mb" in facts:
 			html += bs_add("<canvas id='lcmemory' width='100%' height='20'></canvas>");
@@ -926,11 +936,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				data = []
 				for timestamp in sorted(set(stamps)):
 					if hostname in inventory["hosts"] and timestamp in inventory["hosts"][hostname]:
-						if "ansible_facts" in inventory["hosts"][hostname][timestamp]:
-							if "ansible_memory_mb" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
-								if section in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_memory_mb"]:
-									if "used" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_memory_mb"][section]:
-										last = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_memory_mb"][section]["used"])
+						if "ansible_facts" in invHost:
+							invHostFacts = invHost["ansible_facts"]
+							if "ansible_memory_mb" in invHostFacts:
+								if section in invHostFacts["ansible_memory_mb"]:
+									if "used" in invHostFacts["ansible_memory_mb"][section]:
+										last = int(invHostFacts["ansible_memory_mb"][section]["used"])
 					data.append(last)
 				datas.append(data)
 			html += self.show_chart("lcmemory", labels, datas, ["nocache", "real", "swap"])
@@ -1005,12 +1016,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				data = []
 				for timestamp in sorted(set(stamps)):
 					if hostname in inventory["hosts"] and timestamp in inventory["hosts"][hostname]:
-						if "ansible_facts" in inventory["hosts"][hostname][timestamp]:
-							if "ansible_mounts" in inventory["hosts"][hostname][timestamp]["ansible_facts"]:
-								if mount_n < len(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"]):
-									if "size_available" in inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]:
-										if int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"]) > 0:
-											value = int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_available"]) * 100 / int(inventory["hosts"][hostname][timestamp]["ansible_facts"]["ansible_mounts"][mount_n]["size_total"])
+						invHost = inventory["hosts"][hostname][timestamp]
+						if "ansible_facts" in invHost:
+							invHostFacts = invHost["ansible_facts"]
+							if "ansible_mounts" in invHostFacts:
+								if mount_n < len(invHostFacts["ansible_mounts"]):
+									if "size_available" in invHostFacts["ansible_mounts"][mount_n]:
+										if int(invHostFacts["ansible_mounts"][mount_n]["size_total"]) > 0:
+											value = int(invHostFacts["ansible_mounts"][mount_n]["size_available"]) * 100 / int(invHostFacts["ansible_mounts"][mount_n]["size_total"])
 										else:
 											value = 0
 										last = 100 - value
@@ -1143,11 +1156,13 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 	def libvirt_get_name(self, host):
 		macs = []
-		if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
-			for part in inventory["hosts"][host]["0"]["ansible_facts"]:
-				if part != "ansible_default_ipv4" and type(inventory["hosts"][host]["0"]["ansible_facts"][part]) is dict and "device" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
-					if "macaddress" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
-						macs.append(inventory["hosts"][host]["0"]["ansible_facts"][part]["macaddress"].lower())
+		invHost = inventory["hosts"][host]
+		if "0" in invHost and "ansible_facts" in invHost["0"]:
+			invHostLatestFacts = invHost["0"]["ansible_facts"]
+			for part in invHostLatestFacts:
+				if part != "ansible_default_ipv4" and type(invHostLatestFacts[part]) is dict and "device" in invHostLatestFacts[part]:
+					if "macaddress" in invHostLatestFacts[part]:
+						macs.append(invHostLatestFacts[part]["macaddress"].lower())
 		if len(macs) > 0:
 			domlist = os.popen("virsh list --all 2>&1").read()
 			for line in domlist.split("\n"):
@@ -1219,13 +1234,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='rescan?host=" + host + "'>[RESCAN]</a>" + groups, "latest info", links);
 		else:
 			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='rescan?host=" + host + "'>[RESCAN]</a>" + groups, datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S") + "", links);
-		if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][stamp]:
-			osfamily = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_os_family"]
-			distribution = inventory["hosts"][host][stamp]["ansible_facts"]["ansible_distribution"]
+		if stamp in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][stamp]:
+			invHostFacts = inventory["hosts"][host][stamp]["ansible_facts"]
+			osfamily = invHostFacts["ansible_os_family"]
+			distribution = invHostFacts["ansible_distribution"]
 			icon = osicons_get(osfamily, distribution)
 
 			## VM-Control ##
-			if "ansible_virtualization_type" in inventory["hosts"][host][stamp]["ansible_facts"] and (inventory["hosts"][host][stamp]["ansible_facts"]["ansible_virtualization_type"] == "kvm" or inventory["hosts"][host][stamp]["ansible_facts"]["ansible_virtualization_type"] == "xen"):
+			if "ansible_virtualization_type" in invHostFacts and (invHostFacts["ansible_virtualization_type"] == "kvm" or invHostFacts["ansible_virtualization_type"] == "xen"):
 				vmname = self.libvirt_get_name(host)
 				if vmname != "":
 					dominfo = os.popen("virsh dominfo " + vmname + " 2>&1").read()
@@ -1256,14 +1272,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 			## System ##
 			html.add(bs_row_begin())
-			html.add(self.show_host_table_general(inventory["hosts"][host][stamp]["ansible_facts"]))
+			html.add(self.show_host_table_general(invHostFacts))
 			html.add(bs_col_begin("6"))
 			html.add(bs_card_begin("History", "clock"))
 			html.add(bs_add("<b>Memory-Usage:</b>"))
-			html.add(self.show_host_table_memory_hist(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
+			html.add(self.show_host_table_memory_hist(invHostFacts, stamp, host))
 			html.add(bs_add("<hr />"))
 			html.add(bs_add("<b>Disk-Usage:</b>"))
-			html.add(self.show_host_table_mounts_hist(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
+			html.add(self.show_host_table_mounts_hist(invHostFacts, stamp, host))
 			html.add(bs_card_end())
 			html.add(bs_col_end())
 			html.add(bs_row_end())
@@ -1405,44 +1421,44 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				html.add(bs_row_end())
 
 			html.add(bs_row_begin())
-			html.add(self.show_host_table_memory(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
-			html.add(self.show_host_table_network(inventory["hosts"][host][stamp]["ansible_facts"]))
+			html.add(self.show_host_table_memory(invHostFacts, stamp, host))
+			html.add(self.show_host_table_network(invHostFacts))
 			html.add(bs_row_end())
 
 			## Network ##
 			html.add(bs_row_begin())
-			html.add(self.show_host_table_ifaces(inventory["hosts"][host][stamp]["ansible_facts"]))
+			html.add(self.show_host_table_ifaces(invHostFacts))
 			html.add(bs_row_end())
 			html.add(bs_row_begin())
 			html.add(bs_col_begin("12"))
 			html.add(bs_card_begin("Network-Graph", "net"))
 			graph = VisGraph("vis_network")
 			graph.node_add("host_" + host, host, icon)
-			self.show_host_graph_network(graph, inventory["hosts"][host][stamp]["ansible_facts"], "host_" + host)
+			self.show_host_graph_network(graph, invHostFacts, "host_" + host)
 			html.add(graph.end(direction = "UD"))
 			html.add(bs_card_end())
 			html.add(bs_col_end())
 			html.add(bs_row_end())
 			## Disks ##
 			show = True
-			if "ansible_virtualization_type" in inventory["hosts"][host][stamp]["ansible_facts"] and inventory["hosts"][host][stamp]["ansible_facts"]["ansible_virtualization_type"] == "docker":
+			if "ansible_virtualization_type" in invHostFacts and invHostFacts["ansible_virtualization_type"] == "docker":
 				show = False
 			if show == True:
 				html.add(bs_row_begin())
-				html.add(self.show_host_table_disks(inventory["hosts"][host][stamp]["ansible_facts"]))
-				html.add(self.show_host_table_mounts(inventory["hosts"][host][stamp]["ansible_facts"], stamp, host))
+				html.add(self.show_host_table_disks(invHostFacts))
+				html.add(self.show_host_table_mounts(invHostFacts, stamp, host))
 				html.add(bs_col_begin("12"))
 				html.add(bs_card_begin("Disks-Graph", "harddisk"))
 				graph = VisGraph("vis_disks")
 				graph.node_add("host_" + host, host, icon)
-				self.show_host_graph_disks(graph, inventory["hosts"][host][stamp]["ansible_facts"], "host_" + host)
+				self.show_host_graph_disks(graph, invHostFacts, "host_" + host)
 				html.add(graph.end(direction = "UD"))
 				html.add(bs_card_end())
 				html.add(bs_col_end())
 				html.add(bs_row_end())
 		else:
-			if "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host][stamp]:
-				html.add("<b>" + inventory["hosts"][host][stamp]["msg"].strip() + "</b>\n")
+			if "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host]["0"]:
+				html.add("<b>" + inventory["hosts"][host]["0"]["msg"].strip() + "</b>\n")
 			else:
 				html.add("<b>NO SCANS FOUND</b>\n")
 
@@ -1458,17 +1474,20 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	def show_csv(self):
 		csv = ""
 		for host in inventory["hosts"]:
+			invHost = inventory["hosts"][host]
 			ipaddr = ""
 			if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
-				for part in inventory["hosts"][host]["0"]["ansible_facts"]:
-					if part != "ansible_default_ipv4" and type(inventory["hosts"][host]["0"]["ansible_facts"][part]) is dict and "device" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
-						if "ipv4" in inventory["hosts"][host]["0"]["ansible_facts"][part]:
-							if type(inventory["hosts"][host]["0"]["ansible_facts"][part]["ipv4"]) == list:
-								for ipv4 in inventory["hosts"][host]["0"]["ansible_facts"][part]["ipv4"]:
+				invHostLatest = invHost["0"]
+				invHostLatestFacts = invHostLatest["ansible_facts"]
+				for part in invHostLatestFacts:
+					if part != "ansible_default_ipv4" and type(invHostLatestFacts[part]) is dict and "device" in invHostLatestFacts[part]:
+						if "ipv4" in invHostLatestFacts[part]:
+							if type(invHostLatestFacts[part]["ipv4"]) == list:
+								for ipv4 in invHostLatestFacts[part]["ipv4"]:
 									ipaddr = ipv4["address"]
 									break
 							else:
-								ipaddr = inventory["hosts"][host]["0"]["ansible_facts"][part]["ipv4"]["address"]
+								ipaddr = invHostLatestFacts[part]["ipv4"]["address"]
 								break
 			if ipaddr != "":
 				csv += host + ";"
@@ -1580,14 +1599,17 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 					html.add("</tr>\n")
 				for host in inventory["hosts"]:
+					invHost = inventory["hosts"][host]
 					hoststamp = "0"
 					searchinfo = ""
-					if group not in inventory["hosts"][host]["groups"]:
+					if group not in invHost["groups"]:
 						continue
 					if search != "":
 						match = False
-						if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"]:
-							facts = inventory["hosts"][host]["0"]["ansible_facts"]
+						if "0" in invHost and "ansible_facts" in invHost["0"]:
+							invHostLatest = invHost["0"]
+							invHostLatestFacts = invHostLatest["ansible_facts"]
+							facts = invHostLatestFacts
 							match = True
 							for psearch in search.split(" "):
 								matches = {}
@@ -1608,9 +1630,9 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							continue
 					if stamp != "0":
 						for timestamp in sorted(set(stamps)):
-							if int(stamp) >= int(timestamp) and timestamp in inventory["hosts"][host]:
+							if int(stamp) >= int(timestamp) and timestamp in invHost:
 								hoststamp = timestamp
-					if stamp == "0" or int(stamp) >= int(inventory["hosts"][host]["first"]):
+					if stamp == "0" or int(stamp) >= int(invHost["first"]):
 						html.add("<tr onClick=\"location.href = 'host?host=" + host + "';\">\n")
 						if self.pnp4nagios != "":
 							end = int(time.time()) 
@@ -1619,16 +1641,16 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if stamp != "0":
 							html.add(" <td>" + datetime.fromtimestamp(int(hoststamp)).strftime("%a %d. %b %Y %H:%M:%S") + "</td>\n")
 						else:
-							html.add(" <td>" + datetime.fromtimestamp(int(inventory["hosts"][host]["stamp"])).strftime("%a %d. %b %Y %H:%M:%S") + "</td>\n")
+							html.add(" <td>" + datetime.fromtimestamp(int(invHost["stamp"])).strftime("%a %d. %b %Y %H:%M:%S") + "</td>\n")
 						html.add(" <td width='10%'>" + host + "</td>\n")
-						if hoststamp in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][hoststamp]:
+						if hoststamp in invHost and "ansible_facts" in invHost[hoststamp]:
 							for option in options:
-								if "ansible_facts" in inventory["hosts"][host][hoststamp] and option in inventory["hosts"][host][hoststamp]["ansible_facts"]:
-									value = str(inventory["hosts"][host][hoststamp]["ansible_facts"][option])
+								if "ansible_facts" in invHost[hoststamp] and option in invHost[hoststamp]["ansible_facts"]:
+									value = str(invHost[hoststamp]["ansible_facts"][option])
 									if option == "ansible_distribution":
 										html.add("<td width='10%'>")
-										osfamily = inventory["hosts"][host][hoststamp]["ansible_facts"]["ansible_os_family"]
-										distribution = inventory["hosts"][host][hoststamp]["ansible_facts"]["ansible_distribution"]
+										osfamily = invHost[hoststamp]["ansible_facts"]["ansible_os_family"]
+										distribution = invHost[hoststamp]["ansible_facts"]["ansible_distribution"]
 										html.add("<img src='assets/MaterialDesignIcons/" + osicons_get(osfamily, distribution) + ".svg' />\n")
 									else:
 										html.add("<td>")
@@ -1639,17 +1661,17 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							if stamp != "0":
 								html.add(" <td bgcolor='#abffab'>OK <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						else:
-							if hoststamp in inventory["hosts"][host] and "msg" in inventory["hosts"][host][hoststamp]:
-								html.add(" <td colspan='5' bgcolor='#ffabab'>" + inventory["hosts"][host][hoststamp]["msg"].strip() + "</td>\n")
+							if hoststamp in invHost and "msg" in invHost[hoststamp]:
+								html.add(" <td colspan='5' bgcolor='#ffabab'>" + invHost[hoststamp]["msg"].strip() + "</td>\n")
 							else:
 								html.add(" <td bgcolor='#ffabab'>NO SCANS FOUND</td>\n")
 							if stamp != "0":
 								html.add(" <td bgcolor='#ffabab'>ERR <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 						if stamp == "0":
-							if inventory["hosts"][host]["status"] != "OK":
-								html.add(" <td bgcolor='#ffffab'>" + inventory["hosts"][host]["status"] + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+							if invHost["status"] != "OK":
+								html.add(" <td bgcolor='#ffffab'>" + invHost["status"] + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 							else:
-								html.add(" <td bgcolor='#abffab'>" + inventory["hosts"][host]["status"] + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
+								html.add(" <td bgcolor='#abffab'>" + invHost["status"] + " <a href='rescan?host=" + host + "'>[RESCAN]<a/></td>\n")
 
 						if self.livestatus != "":
 							lstatus = -1
@@ -1688,7 +1710,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 										if tag["name"] == "server:" + host:
 											issue["match"] = True
 											tickets += 1
-										elif "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host]["0"] and "ansible_fqdn" in inventory["hosts"][host]["0"]["ansible_facts"] and tag["name"] == "server:" + inventory["hosts"][host]["0"]["ansible_facts"]["ansible_fqdn"]:
+										elif "0" in invHost and "ansible_facts" in invHost["0"] and "ansible_fqdn" in invHostLatestFacts and tag["name"] == "server:" + invHostLatestFacts["ansible_fqdn"]:
 											tickets += 1
 							if tickets > 0:
 								html.add(" <td bgcolor='#ababff'>" + str(tickets) + "</td>\n")
@@ -1829,22 +1851,24 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		options = ["ansible_os_family", "ansible_architecture", "ansible_product_name", "ansible_distribution", "ansible_kernel", "ansible_processor_count", "ansible_distribution_release", "ansible_virtualization_role", "ansible_virtualization_type", "ansible_pkg_mgr"]
 		stamps = []
 		for host in inventory["hosts"]:
-			for timestamp in inventory["hosts"][host]:
+			invHost = inventory["hosts"][host]
+			for timestamp in invHost:
 				if timestamp.isdigit() and timestamp != "0":
 					stamps.append(timestamp)
 		stats = {}
 		for option in options:
 			stats[option] = {}
 		for host in inventory["hosts"]:
+			invHost = inventory["hosts"][host]
 			hoststamp = stamp
 			if stamp != "0":
 				for timestamp in sorted(set(stamps)):
-					if int(stamp) >= int(timestamp) and timestamp in inventory["hosts"][host]:
+					if int(stamp) >= int(timestamp) and timestamp in invHost:
 						hoststamp = timestamp
-			if stamp == "0" or int(stamp) >= int(inventory["hosts"][host]["first"]):
+			if stamp == "0" or int(stamp) >= int(invHost["first"]):
 				for option in options:
-					if "0" in inventory["hosts"][host] and "ansible_facts" in inventory["hosts"][host][hoststamp] and option in inventory["hosts"][host][hoststamp]["ansible_facts"]:
-						value = inventory["hosts"][host][hoststamp]["ansible_facts"][option];
+					if "0" in invHost and "ansible_facts" in invHost[hoststamp] and option in invHost[hoststamp]["ansible_facts"]:
+						value = invHost[hoststamp]["ansible_facts"][option];
 					else:
 						value = "UNKNOWN"
 					if value not in stats[option]:
@@ -2052,10 +2076,11 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			inventory_read(timestamp)
 			errors = 0
 			for host in inventory["hosts"]:
-				if "0" in inventory["hosts"][host] and "msg" in inventory["hosts"][host]["0"]:
+				invHost = inventory["hosts"][host]
+				if "0" in invHost and "msg" in invHost["0"]:
 					html.add("<b>error-msg:</b>")
 					html.add("<pre style='color: #FF0000;'>")
-					html.add(inventory["hosts"][host]["0"]["msg"])
+					html.add(invHost["0"]["msg"])
 					html.add("</pre>")
 					errors = 2
 				os.system("cp -a facts/hist_" + str(timestamp) + "/" + host + " facts/" + host)
@@ -2274,47 +2299,48 @@ def inventory_read(timestamp = 0):
 			host_options = line.split(" ")[1:]
 			if host not in inventory["hosts"]:
 				inventory["hosts"][host] = {}
-			inventory["hosts"][host]["options"] = host_options
-			if "groups" not in inventory["hosts"][host]:
-				inventory["hosts"][host]["groups"] = []
-			if group not in inventory["hosts"][host]["groups"]:
-				inventory["hosts"][host]["groups"].append(group)
-			inventory["hosts"][host]["info"] = ""
-			inventory["hosts"][host]["stamp"] = "0"
-			inventory["hosts"][host]["last"] = "0"
-			inventory["hosts"][host]["first"] = "0"
-			inventory["hosts"][host]["status"] = "ERR"
+			invHost = inventory["hosts"][host]
+			invHost["options"] = host_options
+			if "groups" not in invHost:
+				invHost["groups"] = []
+			if group not in invHost["groups"]:
+				invHost["groups"].append(group)
+			invHost["info"] = ""
+			invHost["stamp"] = "0"
+			invHost["last"] = "0"
+			invHost["first"] = "0"
+			invHost["status"] = "ERR"
 			if timestamp > 0:
 				if os.path.isfile("./facts/hist_" + str(timestamp) + "/" + host):
 					with open("./facts/hist_" + str(timestamp) + "/" + host) as json_file:
 						hostdata = json.load(json_file)
-						inventory["hosts"][host]["0"] = hostdata
+						invHost["0"] = hostdata
 			else:
 				for filename in hists:
 					stamp = filename.split("_")[1]
 					if os.path.isfile("./facts/hist_" + str(stamp) + "/" + host):
 						with open("./facts/hist_" + str(stamp) + "/" + host) as json_file:
 							hostdata = json.load(json_file)
-							inventory["hosts"][host][str(stamp)] = hostdata
-							if inventory["hosts"][host]["last"] == "0":
-								inventory["hosts"][host]["last"] = str(stamp)
-							inventory["hosts"][host]["first"] = str(stamp)
-							if "0" not in inventory["hosts"][host]:
+							invHost[str(stamp)] = hostdata
+							if invHost["last"] == "0":
+								invHost["last"] = str(stamp)
+							invHost["first"] = str(stamp)
+							if "0" not in invHost:
 								if "ansible_facts" in hostdata:
-									inventory["hosts"][host]["0"] = hostdata
-									inventory["hosts"][host]["stamp"] = str(stamp)
-									inventory["hosts"][host]["info"] += "&lt;"
+									invHost["0"] = hostdata
+									invHost["stamp"] = str(stamp)
+									invHost["info"] += "&lt;"
 							if "ansible_facts" in hostdata:
-								inventory["hosts"][host]["info"] += "OK:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
+								invHost["info"] += "OK:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
 							else:
-								inventory["hosts"][host]["info"] += "ERR:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
+								invHost["info"] += "ERR:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
 				if os.path.isfile("./facts/" + host):
 					with open("./facts/" + host) as json_file:
 						hostdata = json.load(json_file)
-						if "0" not in inventory["hosts"][host]:
-							inventory["hosts"][host]["0"] = hostdata
+						if "0" not in invHost:
+							invHost["0"] = hostdata
 						if "ansible_facts" in hostdata:
-							inventory["hosts"][host]["status"] = "OK"
+							invHost["status"] = "OK"
 
 
 def run():

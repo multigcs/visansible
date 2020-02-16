@@ -128,11 +128,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			self.end_headers()
 			self.wfile.write(bytes("<meta http-equiv=\"refresh\" content=\"1; url=/host?host=" + opts["host"] + "\"><h3>Issue-ID: " + str(issueid) + "</h3>", "utf8"))
 		else:
-			print("#########")
-			print(data)
-			print("#########")
-			print(response.text)
-			print("#########")
 			self.send_response(200)
 			self.send_header("Content-type", "text/html")
 			self.end_headers()
@@ -412,7 +407,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						if simple == False:
 							graph.node_add(parentnode + "_iface_" + device, device + "\\n" + macaddress, "port")
 							graph.edge_add(parentnode, parentnode + "_iface_" + device)
-						print("#####")
 						if "ipaddresses" in iface and type(iface["ipaddresses"]) is list:
 							ips_show = True
 							for address in iface["ipaddresses"]:
@@ -452,22 +446,21 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 							test = True
 		if test == False:
 			if "ansible_mounts" in facts:
-				if "ansible_mounts" in facts:
-					for mount in facts["ansible_mounts"]:
-						graph.node_add(parentnode + "_mount_" + mount["mount"], mount["mount"] + "\\n" + mount["fstype"] + "\\n" + mount["device"], "folder-open")
-						if mount["mount"] == "/":
-							graph.edge_add(parentnode, parentnode + "_mount_" + mount["mount"])
-
-						mparent = ""
-						for mount_parent in facts["ansible_mounts"]:
-							mtest = mount_parent["mount"]
-							if mtest != "/":
-								mtest = mount_parent["mount"] + "/"
-							if mtest in mount["mount"] and mount["mount"] != mount_parent["mount"]:
-								if len(mparent) < len(mount_parent["mount"]):
-									mparent = mount_parent["mount"]
-						if mparent != "":
-							graph.edge_add(parentnode + "_mount_" + mparent, parentnode + "_mount_" + mount["mount"])
+				for aMount in facts["ansible_mounts"]:
+					mount = aMount["mount"]
+					graph.node_add(parentnode + "_mount_" + mount, mount + "\\n" + aMount["fstype"] + "\\n" + aMount["device"], "folder-open")
+					if mount == "/":
+						graph.edge_add(parentnode, parentnode + "_mount_" + mount)
+					mparent = ""
+					for mount_parent in facts["ansible_mounts"]:
+						mtest = mount_parent["mount"]
+						if mtest != "/":
+							mtest = mount_parent["mount"] + "/"
+						if mtest in mount and mount != mount_parent["mount"]:
+							if len(mparent) < len(mount_parent["mount"]):
+								mparent = mount_parent["mount"]
+					if mparent != "":
+						graph.edge_add(parentnode + "_mount_" + mparent, parentnode + "_mount_" + mount)
 			return
 		vg2pv = {}
 		if "ansible_lvm" in facts:

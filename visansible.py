@@ -209,33 +209,42 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					self.show_host_graph_network_pre(graph, invHostLatestFacts, "host_" + host, stamp)
 		for host in inventory["hosts"]:
 			invHost = inventory["hosts"][host]
-			for group in invHost["groups"]:
+
+			if mode == "group":
+				lastGroup = ""
+				for group in invHost["path"].split("/"):
+					if group != "":
+						graph.node_add("group_" + group, group, "table")
+						if lastGroup != "":
+							graph.edge_add("group_" + lastGroup, "group_" + group)
+						lastGroup = group
+
+			if stamp == "0" or int(stamp) >= int(invHost["first"]):
+				invHostLatest = invHost["0"]
 				if mode == "group":
-					graph.node_add("all", "all", "cloud")
-					graph.node_add("group_" + group, group, "table")
-					graph.edge_add("all", "group_" + group)
-				if stamp == "0" or int(stamp) >= int(invHost["first"]):
-					invHostLatest = invHost["0"]
-					if mode == "group":
-						graph.edge_add("group_" + group, "host_" + host)
-					if "0" in invHost and "ansible_facts" in invHostLatest:
-						invHostLatestFacts = invHostLatest["ansible_facts"]
-						fqdn = invHostLatestFacts["ansible_fqdn"]
-						osfamily = invHostLatestFacts["ansible_os_family"]
-						distribution = invHostLatestFacts["ansible_distribution"]
-						productname = ""
-						if "ansible_product_name" in invHostLatestFacts:
-							productname = invHostLatestFacts["ansible_product_name"]
-						architecture = invHostLatestFacts["ansible_architecture"]
-						graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
-						if mode == "network":
-							self.show_host_graph_network(graph, invHostLatestFacts, "host_" + host, stamp, True)
-					elif "0" in invHost and "msg" in invHostLatest:
-						graph.node_add("host_" + host, host + "\\n" + invHostLatest["msg"].strip().replace(":", "\\n").replace("'", "\'"), "monitor", "font: {color: '#FF0000'}")
-					else:
-						if stamp == "0":
-							graph.node_add("host_" + host, host + "\\nNO SCANS FOUND", "monitor", "font: {color: '#FF0000'}")
-						print(json.dumps(invHost, indent=4, sort_keys=True));
+					if lastGroup != "":
+						graph.edge_add("group_" + lastGroup, "host_" + host)
+				if "0" in invHost and "ansible_facts" in invHostLatest:
+					invHostLatestFacts = invHostLatest["ansible_facts"]
+					fqdn = invHostLatestFacts["ansible_fqdn"]
+					osfamily = invHostLatestFacts["ansible_os_family"]
+					distribution = invHostLatestFacts["ansible_distribution"]
+					productname = ""
+					if "ansible_product_name" in invHostLatestFacts:
+						productname = invHostLatestFacts["ansible_product_name"]
+					architecture = invHostLatestFacts["ansible_architecture"]
+					#graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
+					graph.node_add("host_" + host, host + "\\n" + osfamily, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
+					if mode == "network":
+						self.show_host_graph_network(graph, invHostLatestFacts, "host_" + host, stamp, True)
+				elif "0" in invHost and "msg" in invHostLatest:
+					graph.node_add("host_" + host, host + "\\n" + invHostLatest["msg"].strip().replace(":", "\\n").replace("'", "\'"), "monitor", "font: {color: '#FF0000'}")
+				else:
+					if stamp == "0":
+						graph.node_add("host_" + host, host + "\\nNO SCANS FOUND", "monitor", "font: {color: '#FF0000'}")
+					print(json.dumps(invHost, indent=4, sort_keys=True));
+
+
 		html.add(graph.end())
 		self.send_response(200)
 		self.send_header("Content-type", "text/html")
@@ -1223,6 +1232,8 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		groups = " Groups: "
 		for group in inventory["hosts"][host]["groups"]:
 			groups += "<a href='hosts?group=" + group + "'>" + group + "</a> "
+		groups += ", Path: " + inventory["hosts"][host]["path"] + " "
+
 		if stamp == "0":
 			html = HtmlPage("Visansible <small>(" + str(len(inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='rescan?host=" + host + "'>[RESCAN]</a>" + groups, "latest info", links);
 		else:
@@ -1559,14 +1570,29 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html.add(" <td colspan='" + str(len(options) + colspan) + "'>\n")
 					html.add("  <h2>Group: " + group + " </h2>\n")
 					html.add("  <a href='rescan?host=" + group + "'>[RESCAN]<a/>\n")
+
+					if inventory["groups"][group]["path"] != "":
+						html.add(" Path: ")
+						for part in inventory["groups"][group]["path"].split("/"):
+							if part != "":
+								html.add("/<a href=\"hosts?group=" + part + "\">" + part + "</a>")
+
+					if len(inventory["groups"][group]["children"]) > 0:
+						html.add(" Children: ")
+						for children in inventory["groups"][group]["children"]:
+							html.add("<a href=\"hosts?group=" + children + "\">" + children + "</a> ")
+
 					for section in inventory["groups"][group]["options"]:
-						print(section, type(inventory["groups"][group]["options"][section]))
+						html.add(" Vars: ")
 						if type(inventory["groups"][group]["options"][section]) == dict:
 							for var in inventory["groups"][group]["options"][section]:
 								html.add("<small>" + section + ":" + var + "=" + inventory["groups"][group]["options"][section][var] + " </small>")
+						elif type(inventory["groups"][group]["options"][section]) == str:
+							html.add("<small>" + section + ":" + inventory["groups"][group]["options"][section] + " </small>")
 						else:
 							for var in inventory["groups"][group]["options"][section]:
 								html.add("<small>" + section + ":" + var + " </small>")
+
 					html.add(" </td>\n")
 					html.add("</tr>\n")
 					html.add("<tr>\n")
@@ -1595,8 +1621,14 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					invHost = inventory["hosts"][host]
 					hoststamp = "0"
 					searchinfo = ""
-					if group not in invHost["groups"]:
-						continue
+
+					if sgroup == "all":
+						if group != invHost["maingroup"]:
+							continue
+					else:
+						if group not in invHost["groups"]:
+							continue
+
 					if search != "":
 						match = False
 						if "0" in invHost and "ansible_facts" in invHost["0"]:
@@ -2247,93 +2279,154 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return ret, matches
 
 
+def yamlInventory(inventory, data, parent="", path="", isHost=False):
+	if isinstance(data, (dict)):
+		for part in data:
+			if parent == "host":
+				host = path.split("/")[-1]
+				if "options" not in inventory["hosts"][host]:
+					inventory["hosts"][host]["options"] = {}
+				inventory["hosts"][host]["options"][part] = data[part]
+			elif parent == "hosts":
+				if part not in inventory["hosts"]:
+					inventory["hosts"][part] = {}
+					inventory["hosts"][part]["info"] = ""
+					inventory["hosts"][part]["stamp"] = "0"
+					inventory["hosts"][part]["last"] = "0"
+					inventory["hosts"][part]["first"] = "0"
+					inventory["hosts"][part]["status"] = "ERR"
+					inventory["hosts"][part]["groups"] = []
+					inventory["hosts"][part]["path"] = path
+					inventory["hosts"][part]["maingroup"] = path.split("/")[-1]
+					for group in path.split("/"):
+						if group != "":
+							inventory["hosts"][part]["groups"].append(group)
+			elif parent == "vars":
+				group = path.split("/")[-1]
+				inventory["groups"][group]["options"][part] = data[part]
+			elif part not in ["hosts", "children", "vars"]:
+				if part not in inventory["groups"]:
+					inventory["groups"][part] = {}
+					inventory["groups"][part]["options"] = {}
+					inventory["groups"][part]["path"] = path
+					inventory["groups"][part]["children"] = []
+				for group in path.split("/"):
+					if group != "":
+						if group not in inventory["groups"][part]["children"]:
+							inventory["groups"][group]["children"].append(part)
+
+			if part not in ["hosts", "children", "vars"]:
+				newPath = path + "/" + part
+			else:
+				newPath = path
+			if parent == "hosts":
+				newParent = "host"
+			else:
+				newParent = part
+			yamlInventory(inventory, data[part], newParent, newPath, isHost);
+
+
+
 def inventory_read(timestamp = 0):
 	global inventory
 	global groups
-	hostslist = open("inventory.cfg", "r").read()
 	group = "NONE"
 	groups = {}
 	inventory = {}
 	inventory["groups"] = {}
 	inventory["hosts"] = {}
 	section = ""
-	hists = sorted(glob.glob("./facts/hist_*"), reverse=True)
 	misc = False
-	for line in hostslist.split("\n"):
-		if line.startswith("#"):
-			print("COMMENTLINE: " + line)
-		elif line.startswith("[") and ":" in line:
-			group = line.strip("[]").split(":")[0]
-			section = line.strip("[]").split(":")[1]
-			if group not in inventory["groups"]:
-				inventory["groups"][group] = {}
-				inventory["groups"][group]["options"] = {}
-			misc = True
-		elif line.startswith("["):
-			group = line.strip("[]")
-			section = ""
-			if group not in inventory["groups"]:
-				inventory["groups"][group] = {}
-				inventory["groups"][group]["options"] = {}
-			misc = False
-		elif misc == True and line.strip() != "":
-			if "=" in line:
-				name = line.split("=")[0].strip()
-				value = line.split("=")[1].strip()
-				if section not in inventory["groups"][group]["options"]:
-					inventory["groups"][group]["options"][section] = {}
-				inventory["groups"][group]["options"][section][name] = value
-			else:
-				if section not in inventory["groups"][group]["options"]:
-					inventory["groups"][group]["options"][section] = []
-				inventory["groups"][group]["options"][section].append(line.strip())
-		elif misc == False and line.strip() != "":
-			host = line.split(" ")[0]
-			host_options = line.split(" ")[1:]
-			if host not in inventory["hosts"]:
-				inventory["hosts"][host] = {}
-			invHost = inventory["hosts"][host]
-			invHost["options"] = host_options
-			if "groups" not in invHost:
-				invHost["groups"] = []
-			if group not in invHost["groups"]:
-				invHost["groups"].append(group)
-			invHost["info"] = ""
-			invHost["stamp"] = "0"
-			invHost["last"] = "0"
-			invHost["first"] = "0"
-			invHost["status"] = "ERR"
-			if timestamp > 0:
-				if os.path.isfile("./facts/hist_" + str(timestamp) + "/" + host):
-					with open("./facts/hist_" + str(timestamp) + "/" + host) as json_file:
+
+	if os.path.exists("inventory.yml"):
+		with open("inventory.yml") as file:
+			data = yaml.load(file)
+			yamlInventory(inventory, data);
+	else:
+		hostslist = open("inventory.cfg", "r").read()
+		for line in hostslist.split("\n"):
+			if line.startswith("#"):
+				print("COMMENTLINE: " + line)
+			elif line.startswith("[") and ":" in line:
+				group = line.strip("[]").split(":")[0]
+				section = line.strip("[]").split(":")[1]
+				if group not in inventory["groups"]:
+					inventory["groups"][group] = {}
+					inventory["groups"][group]["options"] = {}
+				misc = True
+			elif line.startswith("["):
+				group = line.strip("[]")
+				section = ""
+				if group not in inventory["groups"]:
+					inventory["groups"][group] = {}
+					inventory["groups"][group]["options"] = {}
+					inventory["groups"][group]["path"] = "/all"
+					inventory["groups"][group]["children"] = []
+				misc = False
+			elif misc == True and line.strip() != "":
+				if "=" in line:
+					name = line.split("=")[0].strip()
+					value = line.split("=")[1].strip()
+					if section not in inventory["groups"][group]["options"]:
+						inventory["groups"][group]["options"][section] = {}
+					inventory["groups"][group]["options"][section][name] = value
+				else:
+					if section not in inventory["groups"][group]["options"]:
+						inventory["groups"][group]["options"][section] = []
+					inventory["groups"][group]["options"][section].append(line.strip())
+			elif misc == False and line.strip() != "":
+				host = line.split(" ")[0]
+				host_options = line.split(" ")[1:]
+				if host not in inventory["hosts"]:
+					inventory["hosts"][host] = {}
+				invHost = inventory["hosts"][host]
+				invHost["options"] = host_options
+				if "groups" not in invHost:
+					invHost["groups"] = []
+				if group not in invHost["groups"]:
+					invHost["groups"].append(group)
+				invHost["maingroup"] = group
+				invHost["path"] = "/all/" + group
+				invHost["info"] = ""
+				invHost["stamp"] = "0"
+				invHost["last"] = "0"
+				invHost["first"] = "0"
+				invHost["status"] = "ERR"
+
+
+	hists = sorted(glob.glob("./facts/hist_*"), reverse=True)
+	for host in inventory["hosts"]:
+		if timestamp > 0:
+			if os.path.isfile("./facts/hist_" + str(timestamp) + "/" + host):
+				with open("./facts/hist_" + str(timestamp) + "/" + host) as json_file:
+					hostdata = json.load(json_file)
+					inventory["hosts"][host]["0"] = hostdata
+		else:
+			for filename in hists:
+				stamp = filename.split("_")[1]
+				if os.path.isfile("./facts/hist_" + str(stamp) + "/" + host):
+					with open("./facts/hist_" + str(stamp) + "/" + host) as json_file:
 						hostdata = json.load(json_file)
-						invHost["0"] = hostdata
-			else:
-				for filename in hists:
-					stamp = filename.split("_")[1]
-					if os.path.isfile("./facts/hist_" + str(stamp) + "/" + host):
-						with open("./facts/hist_" + str(stamp) + "/" + host) as json_file:
-							hostdata = json.load(json_file)
-							invHost[str(stamp)] = hostdata
-							if invHost["last"] == "0":
-								invHost["last"] = str(stamp)
-							invHost["first"] = str(stamp)
-							if "0" not in invHost:
-								if "ansible_facts" in hostdata:
-									invHost["0"] = hostdata
-									invHost["stamp"] = str(stamp)
-									invHost["info"] += "&lt;"
+						inventory["hosts"][host][str(stamp)] = hostdata
+						if inventory["hosts"][host]["last"] == "0":
+							inventory["hosts"][host]["last"] = str(stamp)
+						inventory["hosts"][host]["first"] = str(stamp)
+						if "0" not in inventory["hosts"][host]:
 							if "ansible_facts" in hostdata:
-								invHost["info"] += "OK:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
-							else:
-								invHost["info"] += "ERR:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
-				if os.path.isfile("./facts/" + host):
-					with open("./facts/" + host) as json_file:
-						hostdata = json.load(json_file)
-						if "0" not in invHost:
-							invHost["0"] = hostdata
+								inventory["hosts"][host]["0"] = hostdata
+								inventory["hosts"][host]["stamp"] = str(stamp)
+								inventory["hosts"][host]["info"] += "&lt;"
 						if "ansible_facts" in hostdata:
-							invHost["status"] = "OK"
+							inventory["hosts"][host]["info"] += "OK:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
+						else:
+							inventory["hosts"][host]["info"] += "ERR:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
+			if os.path.isfile("./facts/" + host):
+				with open("./facts/" + host) as json_file:
+					hostdata = json.load(json_file)
+					if "0" not in inventory["hosts"][host]:
+						inventory["hosts"][host]["0"] = hostdata
+					if "ansible_facts" in hostdata:
+						inventory["hosts"][host]["status"] = "OK"
 
 
 def run():

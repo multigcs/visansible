@@ -1,0 +1,95 @@
+---
+all:
+    children:
+        linux:
+            children:
+                centos:
+                    hosts:
+                        centos7-docker:
+                            ansible_host: 192.168.122.221
+                            ansible_python_interpreter: /usr/bin/python3
+                        centos7-libvirt:
+                            ansible_host: 192.168.122.121
+                            ansible_python_interpreter: /usr/bin/python3
+                        centos8-docker:
+                            ansible_host: 192.168.122.222
+                            ansible_python_interpreter: /usr/bin/python3
+                        centos8-libvirt:
+                            ansible_host: 192.168.122.122
+                            ansible_python_interpreter: /usr/bin/python3
+                ubuntu:
+                    hosts:
+                        cmkserver:
+                            ansible_host: 192.168.122.12
+                            ansible_python_interpreter: /usr/bin/python3
+                        elkserver:
+                            ansible_host: 192.168.122.11
+                            ansible_python_interpreter: /usr/bin/python3
+                        ubuntu1804-docker:
+                            ansible_host: 192.168.122.211
+                            ansible_python_interpreter: /usr/bin/python3
+                        ubuntu1804-libvirt:
+                            ansible_host: 192.168.122.111
+                            ansible_python_interpreter: /usr/bin/python3
+                        ubuntu1910-docker:
+                            ansible_host: 192.168.122.212
+                            ansible_python_interpreter: /usr/bin/python3
+                        ubuntu1910-libvirt:
+                            ansible_host: 192.168.122.112
+                            ansible_python_interpreter: /usr/bin/python3
+                    vars:
+                        group_var1: value1
+                        group_var2: value2
+
+                debian:
+                    hosts:
+                        debian10-docker:
+                            ansible_host: 192.168.122.213
+                            ansible_python_interpreter: /usr/bin/python3
+                        debian10-libvirt:
+                            ansible_host: 192.168.122.113
+                            ansible_python_interpreter: /usr/bin/python3
+                fedora:
+                    hosts:
+                        fedora30-docker:
+                            ansible_host: 192.168.122.224
+                        fedora30-libvirt:
+                            ansible_host: 192.168.122.132
+                opensuse:
+                    hosts:
+                        opensuse15-libvirt:
+                            ansible_host: 192.168.122.131
+                            ansible_python_interpreter: /usr/bin/python3
+                openwrt:
+                    hosts:
+                        openwrt18-libvirt:
+                            ansible_host: 192.168.122.133
+        bsd:
+            hosts:
+                freebsd12-libvirt:
+                    ansible_host: 192.168.122.191
+                    ansible_python_interpreter: /usr/local/bin/python3
+                openbsd65-libvirt:
+                    ansible_host: 192.168.122.192
+                    ansible_python_interpreter: /usr/local/bin/python3
+                netbsd:
+                    ansible_host: 192.168.122.235
+        osx:
+            hosts:
+                osx-libvirt:
+                    ansible_host: 192.168.122.199
+                    ansible_user: oliver
+                    ansible_password: x
+        solaris:
+            hosts:
+                omniosce:
+                    ansible_host: 192.168.122.200
+        windows:
+            hosts:
+                windows10:
+                    ansible_host: 192.168.122.141
+                    ansible_user: administrator
+                    ansible_password: admin
+                    ansible_port: 5986
+                    ansible_connection: winrm
+                    ansible_winrm_server_cert_validation: ignore

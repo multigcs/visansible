@@ -13,6 +13,50 @@ class Inventory():
 		self.inventory = {}
 
 
+	def build_cfg(self):
+		data = ""
+		for group in self.inventory["groups"]:
+			if group != "all":
+				data += "[" + group + "]\n"
+				for host in self.inventory["hosts"]:
+					if group in self.inventory["hosts"][host]["groups"]:
+						hline = host
+						for option in self.inventory["hosts"][host]["options"]:
+							hline += " " + option + "=" + str(self.inventory["hosts"][host]["options"][option])
+						data += hline + "\n"
+				data += "\n"
+		return data
+
+
+	def build_yaml(self, group="all", prefix=""):
+		data = ""
+		if group == "all":
+			data += "---\n"
+		if group in self.inventory["groups"]:
+			data += prefix + group + ":\n"
+			if len(self.inventory["groups"][group]["options"]) > 0:
+				data += prefix + "    vars:\n"
+				for option in self.inventory["groups"][group]["options"]:
+					data += prefix + "        " + option + ": " + str(self.inventory["groups"][group]["options"][option]) + "\n"
+			if "children" in self.inventory["groups"][group]:
+				hosts = []
+				for host in self.inventory["hosts"]:
+					if self.inventory["hosts"][host]["path"].endswith("/" + group):
+						hosts.append(host)
+				if len(hosts) > 0:
+					data += prefix + "    hosts:\n"
+					for host in hosts:
+						data += prefix + "        " + host + ":\n"
+						for option in self.inventory["hosts"][host]["options"]:
+							data += prefix + "            " + option + ": " + str(self.inventory["hosts"][host]["options"][option]) + "\n"
+				if len(self.inventory["groups"][group]["children"]) > 0:
+					data += prefix + "    children:\n"
+					for children in self.inventory["groups"][group]["children"]:
+						if self.inventory["groups"][children]["path"].endswith("/" + group):
+							data += self.build_yaml(children, prefix + "        ")
+		return data
+
+
 	def calcHostnames(self, hostnames):
 		if isinstance(hostnames, str):
 			hostnames = [hostnames]
@@ -52,8 +96,6 @@ class Inventory():
 					host = path.split("/")[-1]
 					hostnames = self.calcHostnames(host)
 					for hostname in hostnames:
-						if "options" not in self.inventory["hosts"][hostname]:
-							self.inventory["hosts"][hostname]["options"] = {}
 						self.inventory["hosts"][hostname]["options"][part] = data[part]
 				elif parent == "hosts":
 					if part not in self.inventory["hosts"]:
@@ -61,6 +103,7 @@ class Inventory():
 						for hostname in hostnames:
 							self.inventory["hosts"][hostname] = {}
 							self.inventory["hosts"][hostname]["rawname"] = part
+							self.inventory["hosts"][hostname]["options"] = {}
 							self.inventory["hosts"][hostname]["info"] = ""
 							self.inventory["hosts"][hostname]["stamp"] = "0"
 							self.inventory["hosts"][hostname]["last"] = "0"

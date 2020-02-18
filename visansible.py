@@ -12,7 +12,8 @@ from RenderFacts import *
 
 class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
-	inventory = Inventory().inventory_read()
+	inv = Inventory()
+	inventory = inv.inventory_read()
 	rf = RenderFacts(inventory)
 
 
@@ -20,7 +21,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		self.send_response(response)
 		self.send_header("Content-type", contentType)
 		self.end_headers()
-		self.wfile.write(data)
+		self.wfile.write(bytes(data, "utf8"))
 		return
 
 
@@ -105,7 +106,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				opts["search"] = ""
 			self.write_data(self.rf.show_hosts(opts["stamp"], opts["group"], opts["search"]))
 			return
-		elif self.path.startswith("/csv"):
+		elif self.path.startswith("/export_csv"):
 			self.write_data(self.rf.show_csv(), "text/plain")
 			return
 		elif self.path.startswith("/stats"):
@@ -113,6 +114,12 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return
 		elif self.path.startswith("/inventory"):
 			self.write_data(self.rf.show_inventory())
+			return
+		elif self.path.startswith("/export_cfg"):
+			self.write_data(self.inv.build_cfg(), "text/plain")
+			return
+		elif self.path.startswith("/export_yaml"):
+			self.write_data(self.inv.build_yaml(), "text/plain")
 			return
 		elif self.path.startswith("/network"):
 			self.write_data(self.rf.show_graph("network", opts["stamp"]))

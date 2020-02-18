@@ -198,7 +198,7 @@ class RenderFacts():
 
 
 		html.add(graph.end())
-		return bytes(html.end(), "utf8")
+		return html.end()
 
 
 	def show_host_graph_network_pre(self, graph, facts, parentnode, stamp = "0"):
@@ -1148,7 +1148,7 @@ class RenderFacts():
 			html.add("<b><p>" + result + "</p></b>")
 		else:
 			html.add("<h3>ERROR: host not found in libvirt</h3>")
-		return bytes(html.end(), "utf8")
+		return html.end()
 
 
 	def show_spice(self, host):
@@ -1165,7 +1165,7 @@ class RenderFacts():
 			html.add(bs_row_end())
 		else:
 			html.add("<h3>ERROR: host not found in libvirt</h3>")
-		return bytes(html.end(), "utf8")
+		return html.end()
 
 
 	def show_hostdata(self, host, stamp = "0"):
@@ -1406,7 +1406,7 @@ class RenderFacts():
 				html.add("<b>" + self.inventory["hosts"][host]["0"]["msg"].strip() + "</b>\n")
 			else:
 				html.add("<b>NO SCANS FOUND</b>\n")
-		return bytes(html.end(), "utf8")
+		return html.end()
 
 
 	def show_csv(self):
@@ -1433,7 +1433,7 @@ class RenderFacts():
 			else:
 				csv += host + ";"
 				csv += "\n"
-		return bytes(csv, "utf8")
+		return csv
 
 
 	def show_hosts(self, stamp = "0", sgroup = "all", search = ""):
@@ -1692,7 +1692,7 @@ class RenderFacts():
 		html.add("<br />\n")
 		html.add(bs_col_end())
 		html.add(bs_row_end())
-		return bytes(html.end(), "utf8")
+		return html.end()
 
 
 	def show_inventory(self):
@@ -1703,7 +1703,7 @@ class RenderFacts():
 		html.add("<pre>" + inventorycfg + "</pre>\n")
 		html.add(bs_col_end())
 		html.add(bs_row_end())
-		return bytes(html.end(), "utf8")
+		return html.end()
 
 
 	def show_chart(self, name, labels, datas, units = ["","","","","","","","",""], colors = ["#cb2121", "#830909", "#923e99", "#ae83d5", "#111111", "#050505", "#646464", "#747474", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888", "#999999", "#008080", "#0000FF", "#FF0000", "#800000", "#FFFF00", "#808000", "#00FF00", "#008000", "#00FFFF", "#000080", "#FF00FF", "#800080"]):
@@ -1863,7 +1863,7 @@ class RenderFacts():
 			html.add("</script>\n")
 			html.add("<!--/chart-->\n")
 			html.add("\n")
-		return bytes(html.end(), "utf8")
+		return html.end()
 
 
 	def matchmark(self, text, old, color):

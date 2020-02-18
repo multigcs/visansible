@@ -5,10 +5,6 @@ all:
             children:
                 centos:
                     hosts:
-                        hn-test[1:2][a:b]:
-                            ansible_python_interpreter: /usr/bin/python3
-                        hnlz-test[05:10]:
-                            ansible_python_interpreter: /usr/bin/python3
                         centos7-docker:
                             ansible_host: 192.168.122.221
                             ansible_python_interpreter: /usr/bin/python3
@@ -41,10 +37,6 @@ all:
                         ubuntu1910-libvirt:
                             ansible_host: 192.168.122.112
                             ansible_python_interpreter: /usr/bin/python3
-                    vars:
-                        group_var1: value1
-                        group_var2: value2
-
                 debian:
                     hosts:
                         debian10-docker:
@@ -97,3 +89,11 @@ all:
                     ansible_port: 5986
                     ansible_connection: winrm
                     ansible_winrm_server_cert_validation: ignore
+        invtest:
+            vars:
+                group_var1: value1
+                group_var2: value2
+            hosts:
+                invtest[1:2][a:b]:
+                    ansible_python_interpreter: /usr/bin/python3
+                invtest[05:10]:

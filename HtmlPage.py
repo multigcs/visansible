@@ -119,9 +119,10 @@ td {
       <a href="network" class="list-group-item list-group-item-action bg-light">Network</a>
       <a href="groups" class="list-group-item list-group-item-action bg-light">Groups</a>
       <a href="stats" class="list-group-item list-group-item-action bg-light">Stats</a>
-      <a href="inventory" class="list-group-item list-group-item-action bg-light">Inventory-File</a>
       <a href="rescan" class="list-group-item list-group-item-action bg-light">Rescan</a>
-      <a target="_blank" href="csv" class="list-group-item list-group-item-action bg-light">CSV</a>
+      <a target="_blank" href="export_yaml" class="list-group-item list-group-item-action bg-light">Inventory as YAML</a>
+      <a target="_blank" href="export_cfg" class="list-group-item list-group-item-action bg-light">Inventory as CFG</a>
+      <a target="_blank" href="export_csv" class="list-group-item list-group-item-action bg-light">Hosts as CSV</a>
      </div>
 """ + embed + """
     </div>

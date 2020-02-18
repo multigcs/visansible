@@ -4,8 +4,8 @@
 
 import pytest
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from inventory import *
-from RenderFacts import *
+from modules.inventory import *
+from modules.RenderFacts import *
 
 inventory = Inventory().inventory_read()
 rf = RenderFacts(inventory)
@@ -29,5 +29,6 @@ def test_show_inventory():
 
 def test_show_stats():
 	ret = rf.show_stats()
+
 
 

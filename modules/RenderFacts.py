@@ -4,12 +4,11 @@ import time
 import json
 import socket
 import requests
-import spice
 import urllib.parse
 from datetime import datetime
-from VisGraph import *
-from HtmlPage import *
-from bs import *
+from modules.VisGraph import *
+from modules.HtmlPage import *
+from modules.bs import *
 
 
 
@@ -1146,23 +1145,6 @@ class RenderFacts():
 			html.add("<br />")
 			result = os.popen("virsh " + action + " " + vmname + " 2>&1").read()
 			html.add("<b><p>" + result + "</p></b>")
-		else:
-			html.add("<h3>ERROR: host not found in libvirt</h3>")
-		return html.end()
-
-
-	def show_spice(self, host):
-		vmname = self.libvirt_get_name(host)
-		html = HtmlPage("Visansible <small>Spice-Console</small>", "", "", "");
-		if vmname != "":
-			html.add(bs_row_begin())
-			html.add(bs_col_begin("12"))
-			html.add(bs_card_begin("Spice", "monitor"))
-			Spice = spice.Spice(vmname)
-			html.add(Spice.show())
-			html.add(bs_card_end())
-			html.add(bs_col_end())
-			html.add(bs_row_end())
 		else:
 			html.add("<h3>ERROR: host not found in libvirt</h3>")
 		return html.end()

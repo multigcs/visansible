@@ -5,8 +5,9 @@
 
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from inventory import *
-from RenderFacts import *
+from modules.inventory import *
+from modules.RenderFacts import *
+import modules.spice
 
 
 
@@ -23,6 +24,23 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		self.end_headers()
 		self.wfile.write(bytes(data, "utf8"))
 		return
+
+
+	def show_spice(self, host):
+		vmname = self.libvirt_get_name(host)
+		html = HtmlPage("Visansible <small>Spice-Console</small>", "", "", "");
+		if vmname != "":
+			html.add(bs_row_begin())
+			html.add(bs_col_begin("12"))
+			html.add(bs_card_begin("Spice", "monitor"))
+			Spice = spice.Spice(vmname)
+			html.add(Spice.show())
+			html.add(bs_card_end())
+			html.add(bs_col_end())
+			html.add(bs_row_end())
+		else:
+			html.add("<h3>ERROR: host not found in libvirt</h3>")
+		return html.end()
 
 
 	def do_GET(self):
@@ -133,7 +151,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return
 		elif self.path.startswith("/spice"):
 			if "host" in opts:
-				self.write_data(self.rf.show_spice(opts["host"]))
+				self.write_data(self.show_spice(opts["host"]))
 			return
 		elif self.path.startswith("/host"):
 			if "host" in opts:

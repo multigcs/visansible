@@ -5,7 +5,9 @@ all:
             children:
                 centos:
                     hosts:
-                        hntest[1:2][a:b]:
+                        hn-test[1:2][a:b]:
+                            ansible_python_interpreter: /usr/bin/python3
+                        hnlz-test[05:10]:
                             ansible_python_interpreter: /usr/bin/python3
                         centos7-docker:
                             ansible_host: 192.168.122.221

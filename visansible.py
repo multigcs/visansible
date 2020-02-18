@@ -39,10 +39,15 @@ def calcHostnames(hostnames):
 				item = ret[0]
 				seqFrom = item.split(":")[0]
 				seqTo = item.split(":")[1]
+				size = len(seqFrom)
 				if seqFrom.isdigit():
 					seq = range(int(seqFrom), int(seqTo) + 1)
 					for n in seq:
-						newhostString = hostString.replace("[" + item + "]", str(n))
+						ns = str(n)
+						if seqFrom.startswith("0"):
+							fmt = "{:0" + str(size) + "d}"
+							ns = fmt.format(n)
+						newhostString = hostString.replace("[" + item + "]", ns)
 						hostnames.append(newhostString)
 				else:
 					seq = range(ord(seqFrom), ord(seqTo) + 1)
@@ -2321,6 +2326,7 @@ def yamlInventory(inventory, data, parent="", path="", isHost=False):
 				if part not in inventory["hosts"]:
 					hostnames = calcHostnames(part)
 					for hostname in hostnames:
+						print(hostname)
 						inventory["hosts"][hostname] = {}
 						inventory["hosts"][hostname]["rawname"] = part
 						inventory["hosts"][hostname]["info"] = ""

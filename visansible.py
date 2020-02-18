@@ -248,11 +248,11 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 						lastGroup = group
 
 			if stamp == "0" or int(stamp) >= int(invHost["first"]):
-				invHostLatest = invHost["0"]
 				if mode == "group":
 					if lastGroup != "":
 						graph.edge_add("group_" + lastGroup, "host_" + host)
 				if "0" in invHost and "ansible_facts" in invHostLatest:
+					invHostLatest = invHost["0"]
 					invHostLatestFacts = invHostLatest["ansible_facts"]
 					fqdn = invHostLatestFacts["ansible_fqdn"]
 					osfamily = invHostLatestFacts["ansible_os_family"]

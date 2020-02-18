@@ -9,7 +9,7 @@ from datetime import datetime
 
 class Inventory():
 
-	def _init_():
+	def __init__(self):
 		self.inventory = {}
 
 
@@ -98,7 +98,6 @@ class Inventory():
 
 
 	def inventory_read(self, timestamp = 0):
-		global groups
 		group = "NONE"
 		groups = {}
 		self.inventory = {}
@@ -110,8 +109,11 @@ class Inventory():
 			with open("inventory.yml") as file:
 				data = yaml.load(file)
 				self.yamlInventory(data);
+				self.inventory["file"] = "inventory.yml"
+
 		else:
 			hostslist = open("inventory.cfg", "r").read()
+			self.inventory["file"] = "inventory.cfg"
 			for line in hostslist.split("\n"):
 				if line.startswith("#"):
 					print("COMMENTLINE: " + line)

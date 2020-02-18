@@ -9,7 +9,6 @@ import os
 import time
 from datetime import datetime
 import glob
-import json
 import yaml
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.parse
@@ -2326,7 +2325,6 @@ def yamlInventory(inventory, data, parent="", path="", isHost=False):
 				if part not in inventory["hosts"]:
 					hostnames = calcHostnames(part)
 					for hostname in hostnames:
-						print(hostname)
 						inventory["hosts"][hostname] = {}
 						inventory["hosts"][hostname]["rawname"] = part
 						inventory["hosts"][hostname]["info"] = ""

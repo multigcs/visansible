@@ -47,12 +47,14 @@ class RenderFacts():
 			mantisbt_token = vasetup["mantisbt"]["token"]
 		if "project" in vasetup["mantisbt"]:
 			mantisbt_project = vasetup["mantisbt"]["project"]
-		
-		
-		
-		
-		
-		
+
+
+	def __init__(self, inventory):
+		self.inventory = inventory
+		#print(self.inventory)
+
+
+
 	def mantisbt_tickets(self, host = ""):
 		   try:
 				   issues = json.loads(requests.get(self.mantisbt + "/api/rest/issues?project_id=" + str(self.mantisbt_project), headers={"Authorization": self.mantisbt_token}).text)
@@ -74,8 +76,7 @@ class RenderFacts():
 				   return {}
 		   return issues["issues"]
 
-		
-		
+
 	def livestatus_services(self, host = ""):
 	   lsdata = []
 	   try:
@@ -104,23 +105,10 @@ class RenderFacts():
 					   lsdata.append(newservice)
 	   except:
 			   print("ERROR: getting livestatus data")
-			   print("ERROR: getting livestatus data")
 			   self.livestatus = ""
 			   return lsdata
 	   return lsdata
 
-		
-		
-		
-		
-		
-		
-		
-		
-
-	def __init__(self, inventory):
-		self.inventory = inventory
-		#print(self.inventory)
 
 	def facts2rows(self, facts, options = "", offset = "", units = "", align = "left"):
 		html = ""
@@ -206,7 +194,7 @@ class RenderFacts():
 				else:
 					if stamp == "0":
 						graph.node_add("host_" + host, host + "\\nNO SCANS FOUND", "monitor", "font: {color: '#FF0000'}")
-					print(json.dumps(invHost, indent=4, sort_keys=True));
+					#print(json.dumps(invHost, indent=4, sort_keys=True));
 
 
 		html.add(graph.end())
@@ -448,7 +436,7 @@ class RenderFacts():
 						graph.edge_add(parentnode + "_pvs_" + pv, parentnode + "_vgs_" + vg)
 			if "lvs" in facts_lvm:
 				for lv in facts_lvm["lvs"]:
-					print(lv)
+					#print(lv)
 					vg = facts_lvm["pvs"][pv]["vg"]
 					lv_device = "/dev/mapper/" + vg + "-" + lv
 					graph.node_add(parentnode + "_lvs_" + lv, "LVM-LV\\n" + lv, "partition")
@@ -1705,61 +1693,6 @@ class RenderFacts():
 		html.add(bs_col_end())
 		html.add(bs_row_end())
 		return bytes(html.end(), "utf8")
-
-
-	def load_ovs(self):
-		bridges = {}
-		alltags = []
-		bridge = ""
-		port = ""
-		ovsshow = os.popen("ovs-vsctl show").read()
-		for line in ovsshow.split("\n"):
-			if line.strip().startswith("Bridge"):
-				bridge = line.split()[1].strip("\"")
-				port = ""
-				bridges[bridge] = {}
-			elif line.strip().startswith("Port"):
-				port = line.split()[1].strip("\"")
-				bridges[bridge][port] = {}
-				bridges[bridge][port]["tag"] = ""
-				bridges[bridge][port]["trunks"] = []
-				bridges[bridge][port]["vlan_mode"] = ilink = os.popen("ovs-vsctl --columns=vlan_mode list port " + port).read().split()[2].replace("[]", "access/trunk")
-			elif line.strip().startswith("Interface"):
-				interface = line.split()[1].strip("\"")
-				bridges[bridge][port]["interface"] = interface
-				ilink = os.popen("ovs-vsctl --columns=external_ids find interface name=" + interface).read()
-				for part in ilink.split(":", 1)[1].strip().strip("{}").split(","):
-					if "=" in part:
-						name = part.strip().split("=")[0].strip().strip("\"")
-						value = part.strip().split("=")[1].strip().strip("\"")
-						bridges[bridge][port][name] = value
-				if "vm-id" in bridges[bridge][port] and "iface-id" in bridges[bridge][port]:
-					bridges[bridge][port]["vm-name"] = os.popen("virsh dominfo " + bridges[bridge][port]["vm-id"] + " | grep '^Name:'").read().split()[1]
-			elif line.strip().startswith("type:"):
-				itype = line.split()[1].strip("\"")
-				bridges[bridge][port]["type"] = itype
-				bridges[bridge][port]["mac"] = "-----"
-				ifconfig = os.popen("ifconfig " + interface).read()
-				for iline in ifconfig.split("\n"):
-					if iline.strip().startswith("inet "):
-						bridges[bridge][port]["ip"] = iline.strip().split()[1]
-					elif iline.strip().startswith("ether "):
-						bridges[bridge][port]["mac"] = iline.strip().split()[1]
-			elif line.strip().startswith("tag:"):
-				itag = line.split()[1].strip("\"")
-				bridges[bridge][port]["tag"] = itag
-			elif line.strip().startswith("trunks:"):
-				trunks = line.split(":", 1)[1].strip().strip("[]").split(",")
-				for trunk in trunks:
-					bridges[bridge][port]["trunks"].append(trunk.strip())
-		for bridge in bridges:
-			for port in bridges[bridge]:
-				if bridges[bridge][port]["tag"] != "":
-					alltags.append(int(bridges[bridge][port]["tag"]))
-				for trunk in bridges[bridge][port]["trunks"]:
-					alltags.append(int(trunk))
-		alltags = set(alltags)
-		return bridges, alltags
 
 
 	def show_inventory(self):

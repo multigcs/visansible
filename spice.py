@@ -16,9 +16,11 @@ class Spice():
 
 
 	def show(self):
-		print("websockify 1" + self.spice_port.split(":")[2]  + " " + self.spice_port.split(":")[1].strip("/") + ":" + self.spice_port.split(":")[2] + " &")
-		os.system("websockify 1" + self.spice_port.split(":")[2]  + " " + self.spice_port.split(":")[1].strip("/") + ":" + self.spice_port.split(":")[2] + " &")
-		html = """
+		html = ""
+		if ":" in self.spice_port:
+			print("websockify 1" + self.spice_port.split(":")[2]  + " " + self.spice_port.split(":")[1].strip("/") + ":" + self.spice_port.split(":")[2] + " &")
+			os.system("websockify 1" + self.spice_port.split(":")[2]  + " " + self.spice_port.split(":")[1].strip("/") + ":" + self.spice_port.split(":")[2] + " &")
+			html = """
 	<div id="login">
 		<input type='hidden' id='host' name='host' value='localhost'> <!-- localhost -->
 		<input type='hidden' id='port' name='port' value='1""" + self.spice_port.split(":")[2] + """'>

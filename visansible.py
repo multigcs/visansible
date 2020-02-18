@@ -9,7 +9,6 @@ import os
 import time
 from datetime import datetime
 import glob
-import yaml
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -21,42 +20,13 @@ import subprocess
 from HtmlPage import *
 from VisGraph import *
 from bs import *
+from inventory import *
 
 inventory = {}
 ipv4_ips = {}
 vasetup = {}
 
 
-def calcHostnames(hostnames):
-	if isinstance(hostnames, str):
-		hostnames = [hostnames]
-	for hostString in hostnames[:]:
-		hostnames.remove(hostString)
-		if "[" in hostString:
-			ret = re.findall('\[(.*?)\]', hostString)
-			if len(ret) > 0:
-				item = ret[0]
-				seqFrom = item.split(":")[0]
-				seqTo = item.split(":")[1]
-				size = len(seqFrom)
-				if seqFrom.isdigit():
-					seq = range(int(seqFrom), int(seqTo) + 1)
-					for n in seq:
-						ns = str(n)
-						if seqFrom.startswith("0"):
-							fmt = "{:0" + str(size) + "d}"
-							ns = fmt.format(n)
-						newhostString = hostString.replace("[" + item + "]", ns)
-						hostnames.append(newhostString)
-				else:
-					seq = range(ord(seqFrom), ord(seqTo) + 1)
-					for n in seq:
-						newhostString = hostString.replace("[" + item + "]", chr(n))
-						hostnames.append(newhostString)
-		else:
-			hostnames.append(hostString)
-			return hostnames
-	return calcHostnames(hostnames)
 
 
 def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
@@ -2077,30 +2047,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 
 
-	def show_playbooks(self):
-		html = HtmlPage("Playbooks", "Playbooks", "", "");
-		graph = VisGraph("visgraph", "800px")
-
-		for playbook in glob.glob("playbooks/mongodb/*.yml"):
-			#html.add(playbook + "<br />")
-
-			graph.node_add(playbook, playbook, "monitor")
-
-			with open(playbook) as file:
-				data = yaml.load(file)
-				html.add(self.show_elements(graph, playbook, "####", data))
-			break
-
-		html.add(graph.end(direction = "UD"))
-
-		self.send_response(200)
-		self.send_header("Content-type", "text/html")
-		self.end_headers()
-		self.wfile.write(bytes(html.end(), "utf8"))
-		return
-
-
-
 	def do_GET(self):
 		opts = {}
 		opts["stamp"] = "0"
@@ -2187,9 +2133,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return
 		elif self.path.startswith("/stats"):
 			self.show_stats(opts["stamp"])
-			return
-		elif self.path.startswith("/playbooks"):
-			self.show_playbooks()
 			return
 		elif self.path.startswith("/inventory"):
 			self.show_inventory()
@@ -2311,159 +2254,6 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		return ret, matches
 
 
-def yamlInventory(inventory, data, parent="", path="", isHost=False):
-	if isinstance(data, (dict)):
-		for part in data:
-			if parent == "host":
-				host = path.split("/")[-1]
-				hostnames = calcHostnames(host)
-				for hostname in hostnames:
-					if "options" not in inventory["hosts"][hostname]:
-						inventory["hosts"][hostname]["options"] = {}
-					inventory["hosts"][hostname]["options"][part] = data[part]
-			elif parent == "hosts":
-				if part not in inventory["hosts"]:
-					hostnames = calcHostnames(part)
-					for hostname in hostnames:
-						inventory["hosts"][hostname] = {}
-						inventory["hosts"][hostname]["rawname"] = part
-						inventory["hosts"][hostname]["info"] = ""
-						inventory["hosts"][hostname]["stamp"] = "0"
-						inventory["hosts"][hostname]["last"] = "0"
-						inventory["hosts"][hostname]["first"] = "0"
-						inventory["hosts"][hostname]["status"] = "ERR"
-						inventory["hosts"][hostname]["groups"] = []
-						inventory["hosts"][hostname]["path"] = path
-						inventory["hosts"][hostname]["maingroup"] = path.split("/")[-1]
-						for group in path.split("/"):
-							if group != "":
-								inventory["hosts"][hostname]["groups"].append(group)
-			elif parent == "vars":
-				group = path.split("/")[-1]
-				inventory["groups"][group]["options"][part] = data[part]
-			elif part not in ["hosts", "children", "vars"]:
-				if part not in inventory["groups"]:
-					inventory["groups"][part] = {}
-					inventory["groups"][part]["options"] = {}
-					inventory["groups"][part]["path"] = path
-					inventory["groups"][part]["children"] = []
-				for group in path.split("/"):
-					if group != "":
-						if group not in inventory["groups"][part]["children"]:
-							inventory["groups"][group]["children"].append(part)
-
-			if part not in ["hosts", "children", "vars"]:
-				newPath = path + "/" + part
-			else:
-				newPath = path
-			if parent == "hosts":
-				newParent = "host"
-			else:
-				newParent = part
-			yamlInventory(inventory, data[part], newParent, newPath, isHost);
-
-
-
-def inventory_read(timestamp = 0):
-	global inventory
-	global groups
-	group = "NONE"
-	groups = {}
-	inventory = {}
-	inventory["groups"] = {}
-	inventory["hosts"] = {}
-	section = ""
-	misc = False
-
-	if os.path.exists("inventory.yml"):
-		with open("inventory.yml") as file:
-			data = yaml.load(file)
-			yamlInventory(inventory, data);
-	else:
-		hostslist = open("inventory.cfg", "r").read()
-		for line in hostslist.split("\n"):
-			if line.startswith("#"):
-				print("COMMENTLINE: " + line)
-			elif line.startswith("[") and ":" in line:
-				group = line.strip("[]").split(":")[0]
-				section = line.strip("[]").split(":")[1]
-				if group not in inventory["groups"]:
-					inventory["groups"][group] = {}
-					inventory["groups"][group]["options"] = {}
-				misc = True
-			elif line.startswith("["):
-				group = line.strip("[]")
-				section = ""
-				if group not in inventory["groups"]:
-					inventory["groups"][group] = {}
-					inventory["groups"][group]["options"] = {}
-					inventory["groups"][group]["path"] = "/all"
-					inventory["groups"][group]["children"] = []
-				misc = False
-			elif misc == True and line.strip() != "":
-				if "=" in line:
-					name = line.split("=")[0].strip()
-					value = line.split("=")[1].strip()
-					if section not in inventory["groups"][group]["options"]:
-						inventory["groups"][group]["options"][section] = {}
-					inventory["groups"][group]["options"][section][name] = value
-				else:
-					if section not in inventory["groups"][group]["options"]:
-						inventory["groups"][group]["options"][section] = []
-					inventory["groups"][group]["options"][section].append(line.strip())
-			elif misc == False and line.strip() != "":
-				host = line.split(" ")[0]
-				host_options = line.split(" ")[1:]
-				if host not in inventory["hosts"]:
-					inventory["hosts"][host] = {}
-				invHost = inventory["hosts"][host]
-				invHost["options"] = host_options
-				if "groups" not in invHost:
-					invHost["groups"] = []
-				if group not in invHost["groups"]:
-					invHost["groups"].append(group)
-				invHost["maingroup"] = group
-				invHost["path"] = "/all/" + group
-				invHost["info"] = ""
-				invHost["stamp"] = "0"
-				invHost["last"] = "0"
-				invHost["first"] = "0"
-				invHost["status"] = "ERR"
-
-
-	hists = sorted(glob.glob("./facts/hist_*"), reverse=True)
-	for host in inventory["hosts"]:
-		if timestamp > 0:
-			if os.path.isfile("./facts/hist_" + str(timestamp) + "/" + host):
-				with open("./facts/hist_" + str(timestamp) + "/" + host) as json_file:
-					hostdata = json.load(json_file)
-					inventory["hosts"][host]["0"] = hostdata
-		else:
-			for filename in hists:
-				stamp = filename.split("_")[1]
-				if os.path.isfile("./facts/hist_" + str(stamp) + "/" + host):
-					with open("./facts/hist_" + str(stamp) + "/" + host) as json_file:
-						hostdata = json.load(json_file)
-						inventory["hosts"][host][str(stamp)] = hostdata
-						if inventory["hosts"][host]["last"] == "0":
-							inventory["hosts"][host]["last"] = str(stamp)
-						inventory["hosts"][host]["first"] = str(stamp)
-						if "0" not in inventory["hosts"][host]:
-							if "ansible_facts" in hostdata:
-								inventory["hosts"][host]["0"] = hostdata
-								inventory["hosts"][host]["stamp"] = str(stamp)
-								inventory["hosts"][host]["info"] += "&lt;"
-						if "ansible_facts" in hostdata:
-							inventory["hosts"][host]["info"] += "OK:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
-						else:
-							inventory["hosts"][host]["info"] += "ERR:" + datetime.fromtimestamp(int(stamp)).strftime("%H:%M:%S") + " "
-			if os.path.isfile("./facts/" + host):
-				with open("./facts/" + host) as json_file:
-					hostdata = json.load(json_file)
-					if "0" not in inventory["hosts"][host]:
-						inventory["hosts"][host]["0"] = hostdata
-					if "ansible_facts" in hostdata:
-						inventory["hosts"][host]["status"] = "OK"
 
 
 def run():
@@ -2480,7 +2270,7 @@ def run():
 	httpd.serve_forever()
 
 
-inventory_read()
+inventory = Inventory().inventory_read()
 #print(json.dumps(inventory, indent=4))
 run()
 

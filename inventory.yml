@@ -5,6 +5,8 @@ all:
             children:
                 centos:
                     hosts:
+                        hntest[1:2][a:b]:
+                            ansible_python_interpreter: /usr/bin/python3
                         centos7-docker:
                             ansible_host: 192.168.122.221
                             ansible_python_interpreter: /usr/bin/python3

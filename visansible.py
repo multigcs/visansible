@@ -4,6 +4,7 @@
 #
 
 import json
+import re
 import os
 import time
 from datetime import datetime
@@ -25,6 +26,33 @@ from bs import *
 inventory = {}
 ipv4_ips = {}
 vasetup = {}
+
+
+def calcHostnames(hostnames):
+	if isinstance(hostnames, str):
+		hostnames = [hostnames]
+	for hostString in hostnames[:]:
+		hostnames.remove(hostString)
+		if "[" in hostString:
+			ret = re.findall('\[(.*?)\]', hostString)
+			if len(ret) > 0:
+				item = ret[0]
+				seqFrom = item.split(":")[0]
+				seqTo = item.split(":")[1]
+				if seqFrom.isdigit():
+					seq = range(int(seqFrom), int(seqTo) + 1)
+					for n in seq:
+						newhostString = hostString.replace("[" + item + "]", str(n))
+						hostnames.append(newhostString)
+				else:
+					seq = range(ord(seqFrom), ord(seqTo) + 1)
+					for n in seq:
+						newhostString = hostString.replace("[" + item + "]", chr(n))
+						hostnames.append(newhostString)
+		else:
+			hostnames.append(hostString)
+			return hostnames
+	return calcHostnames(hostnames)
 
 
 def facts2rows(facts, options = "", offset = "", units = "", align = "left"):
@@ -2284,23 +2312,28 @@ def yamlInventory(inventory, data, parent="", path="", isHost=False):
 		for part in data:
 			if parent == "host":
 				host = path.split("/")[-1]
-				if "options" not in inventory["hosts"][host]:
-					inventory["hosts"][host]["options"] = {}
-				inventory["hosts"][host]["options"][part] = data[part]
+				hostnames = calcHostnames(host)
+				for hostname in hostnames:
+					if "options" not in inventory["hosts"][hostname]:
+						inventory["hosts"][hostname]["options"] = {}
+					inventory["hosts"][hostname]["options"][part] = data[part]
 			elif parent == "hosts":
 				if part not in inventory["hosts"]:
-					inventory["hosts"][part] = {}
-					inventory["hosts"][part]["info"] = ""
-					inventory["hosts"][part]["stamp"] = "0"
-					inventory["hosts"][part]["last"] = "0"
-					inventory["hosts"][part]["first"] = "0"
-					inventory["hosts"][part]["status"] = "ERR"
-					inventory["hosts"][part]["groups"] = []
-					inventory["hosts"][part]["path"] = path
-					inventory["hosts"][part]["maingroup"] = path.split("/")[-1]
-					for group in path.split("/"):
-						if group != "":
-							inventory["hosts"][part]["groups"].append(group)
+					hostnames = calcHostnames(part)
+					for hostname in hostnames:
+						inventory["hosts"][hostname] = {}
+						inventory["hosts"][hostname]["rawname"] = part
+						inventory["hosts"][hostname]["info"] = ""
+						inventory["hosts"][hostname]["stamp"] = "0"
+						inventory["hosts"][hostname]["last"] = "0"
+						inventory["hosts"][hostname]["first"] = "0"
+						inventory["hosts"][hostname]["status"] = "ERR"
+						inventory["hosts"][hostname]["groups"] = []
+						inventory["hosts"][hostname]["path"] = path
+						inventory["hosts"][hostname]["maingroup"] = path.split("/")[-1]
+						for group in path.split("/"):
+							if group != "":
+								inventory["hosts"][hostname]["groups"].append(group)
 			elif parent == "vars":
 				group = path.split("/")[-1]
 				inventory["groups"][group]["options"][part] = data[part]

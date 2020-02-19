@@ -15,12 +15,13 @@ class HtmlPage():
  <head>
   <title>""" + title + """</title>
   <meta charset='utf-8'>
-  <link rel='stylesheet' type='text/css' href='assets/vis/vis.min.css' />
+  <link rel='stylesheet' type='text/css' href='assets/vis/vis.min.css_' />
   <link rel='stylesheet' type='text/css' href='assets/bootstrap/css/bootstrap.css'>
   <link rel='stylesheet' type='text/css' href='assets/material-design-iconic-font/dist/css/material-design-iconic-font.min.css'>
   <link rel='stylesheet' type='text/css' href='assets/animate.css/animate.min.css'>
   <script type='text/javascript' src='assets/jquery/jquery.min.js'></script>
   <script type='text/javascript' src='assets/vis/vis.min.js'></script>
+  <script type='text/javascript' src='assets/vis/vis-network.min.js_'></script>
   <script type='text/javascript' src='assets/bootstrap/js/bootstrap.min.js'></script>
   <script type='text/javascript' src='assets/chart/Chart.min.js'></script>
   <script type='text/javascript' src='assets/d3/d3.min.js'></script>

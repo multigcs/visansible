@@ -150,7 +150,9 @@ class RenderFacts():
 			html = HtmlPage("Visansible <small>(" + str(len(self.inventory["hosts"])) + " hosts)</small>", "Graph (" + mode + ")", "latest info", links);
 		else:
 			html = HtmlPage("Visansible <small>(" + str(len(self.inventory["hosts"])) + " hosts)</small>", "Graph (" + mode + ")", datetime.fromtimestamp(int(stamp)).strftime("%a %d. %b %Y %H:%M:%S"), links);
-		graph = VisGraph("visgraph", "800px")
+
+		graph = VisGraph("visgraph", self.vasetup.get("graph", {}), "800px")
+
 		self.color_n = 0
 		for host in self.inventory["hosts"]:
 			invHost = self.inventory["hosts"][host]
@@ -1107,28 +1109,25 @@ class RenderFacts():
 	def libvirt_get_name(self, host):
 		macs = []
 		invHost = self.inventory["hosts"][host]
-		if "0" in invHost and "ansible_facts" in invHost["0"]:
-			invHostLatestFacts = invHost["0"]["ansible_facts"]
-			for part in invHostLatestFacts:
-				if part != "ansible_default_ipv4" and type(invHostLatestFacts[part]) is dict and "device" in invHostLatestFacts[part]:
-					if "macaddress" in invHostLatestFacts[part]:
-						macs.append(invHostLatestFacts[part]["macaddress"].lower())
-		if len(macs) > 0:
-			domlist = os.popen("virsh list --all 2>&1").read()
-			for line in domlist.split("\n"):
-				if " " in line and not line.strip().startswith("Id"):
-					name = line.split()[1]
-					domiflist = os.popen("virsh domiflist " + name + " 2>&1").read()
-					for ifline in domiflist.split("\n"):
-						if ":" in ifline:
-							if ifline.split()[4].lower() in macs:
-								return name
-
-
-
-
-
-
+		if "libvirt" in self.vasetup and self.vasetup["libvirt"].get('enable', False):
+			if "0" in invHost and "ansible_facts" in invHost["0"]:
+				invHostLatestFacts = invHost["0"]["ansible_facts"]
+				for part in invHostLatestFacts:
+					if part != "ansible_default_ipv4" and type(invHostLatestFacts[part]) is dict and "device" in invHostLatestFacts[part]:
+						if "macaddress" in invHostLatestFacts[part]:
+							macs.append(invHostLatestFacts[part]["macaddress"].lower())
+			if len(macs) > 0:
+				domlist = os.popen("virsh list --all 2>&1").read()
+				ende = time.time()
+				print('{:5.3f}s'.format(ende-start))
+				for line in domlist.split("\n"):
+					if " " in line and not line.strip().startswith("Id"):
+						name = line.split()[1]
+						domiflist = os.popen("virsh domiflist " + name + " 2>&1").read()
+						for ifline in domiflist.split("\n"):
+							if ":" in ifline:
+								if ifline.split()[4].lower() in macs:
+									return name
 		return ""
 
 
@@ -1156,7 +1155,6 @@ class RenderFacts():
 		for group in self.inventory["hosts"][host]["groups"]:
 			groups += "<a href='hosts?group=" + group + "'>" + group + "</a> "
 		groups += ", Path: " + self.inventory["hosts"][host]["path"] + " "
-
 		if stamp == "0":
 			html = HtmlPage("Visansible <small>(" + str(len(self.inventory["hosts"])) + " hosts)</small>", "Host (" + host + ") <a href='rescan?host=" + host + "'>[RESCAN]</a>" + groups, "latest info", links);
 		else:
@@ -1166,7 +1164,6 @@ class RenderFacts():
 			osfamily = invHostFacts["ansible_os_family"]
 			distribution = invHostFacts["ansible_distribution"]
 			icon = osicons_get(osfamily, distribution)
-
 			## VM-Control ##
 			if "ansible_virtualization_type" in invHostFacts and (invHostFacts["ansible_virtualization_type"] == "kvm" or invHostFacts["ansible_virtualization_type"] == "xen"):
 				vmname = self.libvirt_get_name(host)
@@ -1196,7 +1193,6 @@ class RenderFacts():
 						html.add(bs_card_end())
 						html.add(bs_col_end())
 						html.add(bs_row_end())
-
 			## System ##
 			html.add(bs_row_begin())
 			html.add(self.show_host_table_general(invHostFacts))
@@ -1210,7 +1206,6 @@ class RenderFacts():
 			html.add(bs_card_end())
 			html.add(bs_col_end())
 			html.add(bs_row_end())
-
 			## Tickets ##
 			if self.mantisbt != "" or self.livestatus != "":
 				html.add(bs_row_begin())
@@ -1359,13 +1354,14 @@ class RenderFacts():
 			html.add(bs_row_begin())
 			html.add(bs_col_begin("12"))
 			html.add(bs_card_begin("Network-Graph", "net"))
-			graph = VisGraph("vis_network")
+			graph = VisGraph("vis_network", self.vasetup.get("graph"))
 			graph.node_add("host_" + host, host, icon)
 			self.show_host_graph_network(graph, invHostFacts, "host_" + host)
 			html.add(graph.end(direction = "UD"))
 			html.add(bs_card_end())
 			html.add(bs_col_end())
 			html.add(bs_row_end())
+
 			## Disks ##
 			show = True
 			if "ansible_virtualization_type" in invHostFacts and invHostFacts["ansible_virtualization_type"] == "docker":
@@ -1376,7 +1372,7 @@ class RenderFacts():
 				html.add(self.show_host_table_mounts(invHostFacts, stamp, host))
 				html.add(bs_col_begin("12"))
 				html.add(bs_card_begin("Disks-Graph", "harddisk"))
-				graph = VisGraph("vis_disks")
+				graph = VisGraph("vis_disks", self.vasetup.get("graph"))
 				graph.node_add("host_" + host, host, icon)
 				self.show_host_graph_disks(graph, invHostFacts, "host_" + host)
 				html.add(graph.end(direction = "UD"))

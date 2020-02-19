@@ -89,19 +89,3 @@ all:
                     ansible_port: 5986
                     ansible_connection: winrm
                     ansible_winrm_server_cert_validation: ignore
-        invtest:
-            vars:
-                group_var1: value1
-                group_var2: value2
-            hosts:
-                invtest[1:2][a:b]:
-                    ansible_python_interpreter: /usr/bin/python3
-                invtest[05:10]:
-
-        invtest2:
-            hosts:
-                invtest[01:40][a:b]:
-
-        invtest3:
-            hosts:
-                invtest[01:40][c:d]:

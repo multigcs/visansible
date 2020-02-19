@@ -1424,7 +1424,7 @@ class RenderFacts():
 	def build_tree(self, group="all", prefix=""):
 		data = ""
 		if group in self.inventory["groups"]:
-			data += prefix + "<a href=\"/hosts?group=" + group + "\"><img src=\"assets/MaterialDesignIcons/table.svg\">" + group + "</a>\n"
+			data += prefix + "+-<a href=\"/hosts?group=" + group + "\"><img src=\"assets/MaterialDesignIcons/table.svg\">" + group + "</a>\n"
 #			if len(self.inventory["groups"][group]["options"]) > 0:
 #				data += prefix + " vars\n"
 #				for option in self.inventory["groups"][group]["options"]:
@@ -1445,13 +1445,13 @@ class RenderFacts():
 							osfamily = invHostLatestFacts["ansible_os_family"]
 							distribution = invHostLatestFacts["ansible_distribution"]
 							icon = osicons_get(osfamily, distribution)
-						data += prefix + "   " + "<a href=\"/host?host=" + host + "\"><img src=\"assets/MaterialDesignIcons/" + icon + ".svg\">" + host + "</a>\n"
+						data += prefix + "|  " + "+-<a href=\"/host?host=" + host + "\"><img src=\"assets/MaterialDesignIcons/" + icon + ".svg\">" + host + "</a>\n"
 #						for option in self.inventory["hosts"][host]["options"]:
 #							data += prefix + "    " + option + ": " + str(self.inventory["hosts"][host]["options"][option]) + "\n"
 				if len(self.inventory["groups"][group]["children"]) > 0:
 					for children in self.inventory["groups"][group]["children"]:
 						if self.inventory["groups"][children]["path"].endswith("/" + group):
-							data += self.build_tree(children, prefix + "   ")
+							data += self.build_tree(children, prefix + "|  ")
 		return data
 
 

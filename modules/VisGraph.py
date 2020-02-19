@@ -6,6 +6,16 @@
 class VisGraph():
 
 	def __init__(self, name = "visjsgraph", height = "640px"):
+		""" initialize a new graph
+
+		Args:
+			name (str): name of the graph
+			height (str): height of the graph
+
+		Returns:
+			None
+
+		"""
 		self.name = name
 		self.edges = []
 		self.html = "\n"
@@ -15,6 +25,15 @@ class VisGraph():
 		self.html += "  var nodes = new vis.DataSet([\n"
 
 	def end(self, direction = ""):
+		""" builds the graph in gtml/javascript
+
+		Args:
+			direction (str): direction of the graph (UD/LR/...)
+
+		Returns:
+			html/javascript string
+
+		"""
 		self.html += "  ]);\n"
 		self.html += "  var edges = new vis.DataSet([\n"
 		for edge in self.edges:
@@ -78,6 +97,18 @@ class VisGraph():
 
 
 	def node_add(self, nid, label, icon = "desktop-tower", options = ""):
+		""" Adds a node to the graph
+
+		Args:
+			nid (str): id of the node
+			label (str): label of the node
+			icon (str): label of the node
+			options (str): options of the node
+
+		Returns:
+			None
+
+		"""
 		if not "/" in icon:
 			icon = "assets/MaterialDesignIcons/" + icon
 		if options != "":
@@ -87,6 +118,17 @@ class VisGraph():
 
 
 	def edge_add(self, source, target, options = ""):
+		""" Adds an edge to the graph
+
+		Args:
+			source (str): id of the source node
+			target (str): id of the target node
+			options (str): edge options
+
+		Returns:
+			None
+
+		"""
 		if not [source, target, options] in self.edges:
 			self.edges.append([source, target, options])
 

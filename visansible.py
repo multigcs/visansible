@@ -4,6 +4,7 @@
 #
 
 
+import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from modules.inventory import *
 from modules.RenderFacts import *
@@ -72,7 +73,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			html.add("<pre>")
 			html.add(" ".join(command))
 			html.add("</pre>")
-			inventory_read(timestamp)
+			self.inventory = self.inv.inventory_read(timestamp)
 			errors = 0
 			for host in self.inventory["hosts"]:
 				invHost = self.inventory["hosts"][host]
@@ -83,7 +84,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					html.add("</pre>")
 					errors = 2
 				os.system("cp -a facts/hist_" + str(timestamp) + "/" + host + " facts/" + host)
-			inventory_read()
+			self.inventory = self.inv.inventory_read()
 			if result.stderr.decode('utf-8') != "":
 				html.add("<b>stderr:</b>")
 				if "WARNING" in result.stderr.decode('utf-8'):
@@ -193,7 +194,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 					self.end_headers()
 					self.wfile.write(bytes("file NO SCANS FOUND: " + self.path, "utf8"))
 		else:
-			self.show_hosts()
+			self.write_data(self.rf.show_hosts())
 		return
 
 

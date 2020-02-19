@@ -68,7 +68,7 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 				os.mkdir("facts")
 			if not os.path.exists("facts/hist_" + str(timestamp)):
 				os.mkdir("facts//hist_" + str(timestamp))
-			command = ['ansible', '-i', 'inventory.cfg', opts["host"], '-m', 'setup', '--tree', 'facts/hist_' + str(timestamp)]
+			command = ['ansible', '-i', self.rf.inventory["file"], opts["host"], '-m', 'setup', '--tree', 'facts/hist_' + str(timestamp)]
 			result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			html = HtmlPage("Visansible", "Rescan", "");
 			html.add("<b>command:</b>")

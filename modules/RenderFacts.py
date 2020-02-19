@@ -1414,6 +1414,47 @@ class RenderFacts():
 		return csv
 
 
+	def show_tree(self):
+		html = HtmlPage("Visansible");
+		html.add("<pre>")
+		html.add(self.build_tree())
+		html.add("</pre>")
+		return html.end()
+
+	def build_tree(self, group="all", prefix=""):
+		data = ""
+		if group in self.inventory["groups"]:
+			data += prefix + "<a href=\"/hosts?group=" + group + "\"><img src=\"assets/MaterialDesignIcons/table.svg\">" + group + "</a>\n"
+#			if len(self.inventory["groups"][group]["options"]) > 0:
+#				data += prefix + " vars\n"
+#				for option in self.inventory["groups"][group]["options"]:
+#					data += prefix + "  " + option + ": " + str(self.inventory["groups"][group]["options"][option]) + "\n"
+			if "children" in self.inventory["groups"][group]:
+				hosts = []
+				for host in self.inventory["hosts"]:
+					if self.inventory["hosts"][host]["path"].endswith("/" + group):
+						hosts.append(host)
+				if len(hosts) > 0:
+					for host in hosts:
+
+						icon = "monitor"
+						invHost = self.inventory["hosts"][host]
+						if "0" in invHost and "ansible_facts" in invHost["0"]:
+							invHostLatest = invHost["0"]
+							invHostLatestFacts = invHostLatest["ansible_facts"]
+							osfamily = invHostLatestFacts["ansible_os_family"]
+							distribution = invHostLatestFacts["ansible_distribution"]
+							icon = osicons_get(osfamily, distribution)
+						data += prefix + "   " + "<a href=\"/host?host=" + host + "\"><img src=\"assets/MaterialDesignIcons/" + icon + ".svg\">" + host + "</a>\n"
+#						for option in self.inventory["hosts"][host]["options"]:
+#							data += prefix + "    " + option + ": " + str(self.inventory["hosts"][host]["options"][option]) + "\n"
+				if len(self.inventory["groups"][group]["children"]) > 0:
+					for children in self.inventory["groups"][group]["children"]:
+						if self.inventory["groups"][children]["path"].endswith("/" + group):
+							data += self.build_tree(children, prefix + "   ")
+		return data
+
+
 	def show_hosts(self, stamp = "0", sgroup = "all", search = ""):
 		if search != "":
 			search = search.replace("%20", " ")

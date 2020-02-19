@@ -117,6 +117,7 @@ td {
      <div class="sidebar-heading">""" + title + """</div>
      <div class="list-group list-group-flush">
       <a href="hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
+      <a href="tree" class="list-group-item list-group-item-action bg-light">Tree</a>
       <a href="network" class="list-group-item list-group-item-action bg-light">Network</a>
       <a href="groups" class="list-group-item list-group-item-action bg-light">Groups</a>
       <a href="stats" class="list-group-item list-group-item-action bg-light">Stats</a>

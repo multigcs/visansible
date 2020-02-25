@@ -1,5 +1,9 @@
 
 import os
+import io
+import re
+import cgi
+import yaml
 import time
 import json
 import socket
@@ -10,6 +14,320 @@ from modules.VisGraph import *
 from modules.HtmlPage import *
 from modules.bs import *
 
+
+def str_format(string):
+	return cgi.escape(str(string)).replace("\'", "")
+
+
+def str_short(string, slen=100):
+	string = str_format(string)
+	if len(string) > slen:
+		string = string[:(slen - 3)] + " ..."
+	return string
+
+
+def vars_replace(rvars, data):
+	for n in (1, 2, 3, 4, 5, 6):
+		if isinstance(data, (dict)):
+			for part in data:
+				ret = re.findall('\{\{(.*?)\}\}', str(data[part]))
+				if len(ret) > 0:
+					for var in ret:
+						var_strippted = var.strip()
+						if var_strippted in rvars:
+							data[part] = str(data[part]).replace("{{%s}}" % (var), str(rvars[var_strippted]))
+		elif isinstance(data, (list, tuple)):
+			new_data = []
+			for part in data:
+				ret = re.findall('\{\{(.*?)\}\}', str(part))
+				if len(ret) > 0:
+					for var in ret:
+						var_strippted = var.strip()
+						if var_strippted in rvars:
+							new_data.append(str(part).replace("{{%s}}" % (var), str(rvars[var_strippted])))
+						else:
+							new_data.append(part)
+				else:
+					new_data.append(part)
+			data = new_data
+		else:
+			data = str(data)
+			ret = re.findall('\{\{(.*?)\}\}', data)
+			if len(ret) > 0:
+				for var in ret:
+					var_strippted = var.strip()
+					if var_strippted in rvars:
+						data = data.replace("{{%s}}" % (var), str(rvars[var_strippted]))
+
+	return data
+
+
+def defaults_load(defaultsfile, html, defaults=None):
+	if defaults == None:
+		defaults = {}
+	if os.path.isfile(defaultsfile):
+		html.add("<table class='table table-hover' width='100%'>")
+		with open(defaultsfile, 'r') as stream:
+			new_defaults = yaml.safe_load(stream)
+			for item in new_defaults:
+				defaults[item] = vars_replace(defaults, new_defaults[item])
+				html.add("<tr><td>" + str(item) + "</td><td data-toggle='tooltip' title='" + str_format(defaults[item]) + "'>" + str_short(new_defaults[item]) + "</td></tr>")
+		html.add("</table>")
+	else:
+		html.add("<h2>FILE NOT FOUND</h2>")
+	return defaults
+
+
+
+
+def task_show(tasksdir, tasks, rvars, html="", parent="", prefix=""):
+
+	if os.path.isfile("%s/defaults/main.yml" % (tasksdir)):
+		html.add(bs_col_begin("2"))
+		html.add(bs_card_begin("defaults:" + "%s/defaults/main.yml" % (tasksdir), "file", collapse=True))
+		html.add(bs_row_begin())
+		rvars = defaults_load("%s/defaults/main.yml" % (tasksdir), html, rvars)
+		html.add(bs_row_end())
+		html.add(bs_card_end())
+		html.add(bs_col_end())
+
+
+	for item in tasks:
+		ritems = []
+		if 'include' in item:
+			include = item.get('include', '')
+
+			html.add(bs_col_begin("12"))
+			html.add(bs_card_begin("include:" + include, "file", collapse=True))
+			html.add(bs_row_begin())
+
+			print("%sinclude: %s" % (prefix, include))
+			includefile = "%s/%s" % (tasksdir, include)
+			with open(includefile, 'r') as stream:
+				data = yaml.safe_load(stream)
+			task_show(tasksdir, data, rvars, html, parent, "%s  " % (prefix))
+
+			html.add(bs_row_end())
+			html.add(bs_card_end())
+			html.add(bs_col_end())
+
+
+		elif 'name' in item:
+			taskname = item.get('name', '')
+			print("%staskname: %s" % (prefix, taskname))
+			
+			icon = "script"
+
+			if 'include_tasks' in item:
+				include_tasks = item.get('include_tasks', '')
+
+				html.add(bs_col_begin("12"))
+				html.add(bs_card_begin("include_tasks:" + taskname, "file", collapse=True))
+				html.add(bs_row_begin())
+
+				html.add(bs_col_begin("3"))
+				html.add("<table class='table table-hover' width='100%'>")
+				for part in item:
+					if part != "name":
+						html.add("<tr><td>" + str(part) + "</td><td>" + str_short(item[part]) + "</td></tr>")
+				html.add("</table>")
+				html.add(bs_col_end())
+
+
+
+				if isinstance(include_tasks, (list)):
+					for include_task in include_tasks:
+						print("###%sinclude_task: %s" % (prefix, include_task))
+#						includefile = "%s/%s" % (tasksdir, include_task)
+#						with open(includefile, 'r') as stream:
+#							data = yaml.safe_load(stream)
+#						task_show(tasksdir, data, rvars, html, parent, "%s  " % (prefix))
+				if isinstance(include_tasks, (str)):
+					print("##%sinclude_task: %s" % (prefix, include_tasks))
+					includefile = "%s/%s" % (tasksdir, include_tasks)
+					with open(includefile, 'r') as stream:
+						data = yaml.safe_load(stream)
+					task_show(tasksdir, data, rvars, html, parent, "%s  " % (prefix))
+
+				html.add(bs_row_end())
+				html.add(bs_card_end())
+				html.add(bs_col_end())
+				continue
+
+			if 'set_fact' in item:
+				set_fact = item.get('set_fact', '')
+				if isinstance(set_fact, (dict)):
+					for set_factitem in set_fact:
+						rvars[set_factitem] = vars_replace(rvars, str(set_fact[set_factitem]))
+
+
+
+
+			if 'debug' in item:
+				icon = "information"
+				tags = item.get('debug', '')
+				msg = vars_replace(rvars, str(tags["msg"]))
+				print("%s  debug: %s" % (prefix, str(msg)))
+
+
+			if 'tags' in item:
+				icon = "tag"
+				tags = item.get('tags', '')
+				if isinstance(tags, (list, tuple)):
+					print("%s  tags: %s" % (prefix, ", ".join(tags)))
+				else:
+					print("%s  tags: %s" % (prefix, str(tags)))
+
+
+			if 'when' in item:
+				#icon = "comment-question"
+				when = item.get('when', [])
+				if isinstance(when, (list, tuple)):
+					for whenitem in when:
+						print("%s  when: %s" % (prefix, str(whenitem)))
+				else:
+					print("%s  when: %s" % (prefix, str(when)))
+
+			if 'notify' in item:
+				#icon = "information"
+				notify = item.get('notify', [])
+				if isinstance(notify, (list, tuple)):
+					for notifyitem in notify:
+						print("%s  notify: %s" % (prefix, str(notifyitem)))
+				else:
+					print("%s  notify: %s" % (prefix, str(notify)))
+
+			if 'with_items' in item:
+				with_items = item.get('with_items', [])
+				if isinstance(with_items, (list, tuple)):
+					for with_itemsitem in with_items:
+						print("%s  with_items: %s" % (prefix, str(with_itemsitem)))
+						ritems.append({'raw': vars_replace(rvars, str(with_itemsitem))})
+				else:
+					print("%s  with_items: %s" % (prefix, str(with_items)))
+					ritems.append({'raw': vars_replace(rvars, str(with_items))})
+
+
+			if 'with_filetree' in item:
+				#icon = "tree"
+				with_filetree = item.get('with_filetree', [])
+				if isinstance(with_filetree, (list, tuple)):
+					for with_filetreeitem in with_filetree:
+						print("%s  with_filetree#2: %s" % (prefix, str(with_filetreeitem)))
+						ritems.append({'raw': vars_replace(rvars, str(with_filetreeitem))})
+				else:
+					print("%s  with_filetree#1: %s" % (prefix, str(with_filetree)))
+					for r, d, f in os.walk(tasksdir + "/" + str(with_filetree)):
+						for fi in f:
+							ssrc = "%s/%s" % (r, fi)
+							spath = "%s/%s" % (r.replace(tasksdir + "/" + str(with_filetree), ""), fi)
+							ritems.append({'raw': vars_replace(rvars, "%s/%s" % (r, fi)), 'src': ssrc.replace("//", "/"), 'path': spath.lstrip("/")})
+
+			if 'with_sequence' in item:
+				#icon = "format-list-numbered"
+				with_sequence = item.get('with_sequence', [])
+				with_sequence_options = ""
+				if isinstance(with_sequence, (dict)):
+					for with_sequenceitem in with_sequence:
+						with_sequence_options += "%s=%s " % (str(with_sequenceitem), str(with_sequence[with_sequenceitem]))
+				else:
+					with_sequence_options = str(with_sequence)
+
+				with_sequence_options = vars_replace(rvars, with_sequence_options)
+				print("%s  with_sequence: %s" % (prefix, with_sequence_options))
+				if with_sequence_options.startswith("count="):
+					num = with_sequence_options.split("=")[-1]
+					for n in range(0, int(num)):
+						ritems.append({'raw': str(n + 1)})
+
+			if 'template' in item:
+				icon = "file"
+				template = item.get('template', [])
+				template_options = ""
+				if isinstance(template, (dict)):
+					for templateitem in template:
+						template_options += "%s=%s " % (str(templateitem), str(template[templateitem]))
+				else:
+					template_options = str(template)
+				print("%s  template: %s" % (prefix, template_options))
+				if len(ritems) > 0:
+					for ritem in ritems:
+						new_template_options = vars_replace({"item": ritem['raw']}, template_options)
+
+						if 'src' in ritem:
+							new_template_options = vars_replace({"item.src": ritem['src']}, new_template_options)
+
+						if 'path' in ritem:
+							new_template_options = vars_replace({"item.path": ritem['path']}, new_template_options)
+
+						new_template_options = vars_replace(rvars, new_template_options)
+						print("%s  >>>>>template: %s" % (prefix, new_template_options))
+				else:
+					template_options = vars_replace(rvars, template_options)
+					print("%s  >>>>>template: %s" % (prefix, template_options))
+
+
+			icons = {
+				'user': "person-plus",
+				'unarchive': "archive",
+				'blockinfile': "pencil",
+				'lineinfile': "pencil",
+				'apache2_module': "web",
+				'package': "package",
+				'apt': "package",
+				'apt_key': "package",
+				'apt_repository': "package",
+				'debconf': "package",
+				'file': "file",
+				'copy': "file-send",
+				'systemd': "restart",
+				'service': "restart",
+				'shell': "powershell",
+			}
+
+			for part in item:
+				if part in icons:
+					icon = icons[part]
+				elif part.startswith("apt"):
+					icon = "package"
+				elif part.startswith("deb"):
+					icon = "package"
+				elif part.startswith("rpm"):
+					icon = "package"
+				elif part.startswith("apache2"):
+					icon = "package"
+				elif part.startswith("vmware_"):
+					icon = "virtual-reality"
+				elif part.startswith("cloud"):
+					icon = "cloud"
+				elif part.startswith("aws_"):
+					icon = "cloud"
+				elif part.startswith("azure_"):
+					icon = "cloud"
+				elif part.startswith("ec2_"):
+					icon = "cloud"
+				elif part.startswith("docker_"):
+					icon = "docker"
+
+
+			html.add(bs_col_begin("3"))
+			html.add(bs_card_begin("task:" + taskname, icon))
+			html.add("<table class='table table-hover' width='100%'>")
+			for part in item:
+				if part != "name":
+					html.add("<tr><td>" + str(part) + "</td><td>")
+					if isinstance(item[part], (dict)):
+						for npart in item[part]:
+							html.add("<font data-html='true' data-toggle='tooltip' title='" + str_format(vars_replace(rvars, str_format(item[part][npart]))) + "'>" + str_short(str_format(npart), 20) + "=" + str_format(item[part][npart]) + "</font><br />")
+					elif isinstance(item[part], (list, tuple)):
+						for npart in item[part]:
+							html.add("<font data-html='true' data-toggle='tooltip' title='" + str_format(vars_replace(rvars, str_format(npart))) + "'>" + str_short(str_format(npart), 30) + "</font><br />")
+					else:
+						html.add("<font data-html='true' data-toggle='tooltip' title='" + str_format(vars_replace(rvars, str_format(item[part]))) + "'>" + str_short(str_format(item[part])) + "</font><br />")
+					html.add("</td></tr>")
+			html.add("</table>")
+			html.add(bs_card_end())
+			html.add(bs_col_end())
 
 
 
@@ -1420,6 +1738,104 @@ class RenderFacts():
 		html.add(self.build_tree())
 		html.add("</pre>")
 		return html.end()
+
+
+	def show_playbook(self):
+		html = HtmlPage("Visansible");
+		html.add(bs_row_begin())
+
+		playbook_file = "ansible-tine/deploy_playbook.yml"
+		if os.path.isfile(playbook_file):
+			with open(playbook_file, 'r') as stream:
+				rvars = {}
+				data = yaml.safe_load(stream)
+				basedir = os.path.dirname(playbook_file)
+				dirname = os.path.basename(basedir)
+				if dirname == "":
+					dirname = "."
+				if dirname == "tasks":
+					task_show(basedir, data, rvars, html, parent)
+					a = 1
+				else:
+					lastid = "root"
+					for item in data:
+						if 'hosts' in item:
+							print("hosts: %s" % (str(item['hosts'])))
+
+							rvars["inventory_hostname"] = str(item['hosts'])
+
+
+						if 'vars_files' in item:
+							html.add(bs_col_begin("12"))
+							html.add(bs_card_begin("vars_files", "file", collapse=True))
+							html.add(bs_row_begin())
+							for varfile in item['vars_files']:
+
+								html.add(bs_col_begin("3"))
+								html.add(bs_card_begin("vars_file:" + varfile, "file"))
+								html.add(bs_row_begin())
+
+								rvars = defaults_load(basedir + "/" + varfile, html, rvars)
+
+								html.add(bs_row_end())
+								html.add(bs_card_end())
+								html.add(bs_col_end())
+
+
+							html.add(bs_row_end())
+							html.add(bs_card_end())
+							html.add(bs_col_end())
+
+
+
+						if 'tasks' in item:
+							task_show(basedir, item['tasks'], rvars, html, parent, "  ")
+
+
+						if 'roles' in item:
+							roles = item.get('roles', {})
+							for role in roles:
+								role_name = ""
+								if isinstance(role, (str)):
+									role_name = role
+									print("  role: %s" % (role_name))
+								else:
+									role_name = role.get('role', '')
+									print("  role: %s" % (role_name))
+									for option in role:
+										if option != 'role':
+											print("	%s: %s" % (option, str(role[option])))
+
+
+
+								html.add(bs_col_begin("12"))
+								html.add(bs_card_begin("role:" + role_name, "group", collapse=True))
+								html.add(bs_row_begin())
+
+								role_dir = "%s/roles/%s" % (dirname, role_name)
+								if os.path.isdir(role_dir):
+									role_tasks_main = "%s/roles/%s/tasks/main.yml" % (dirname, role_name)
+									if os.path.isfile(role_tasks_main):
+										with open(role_tasks_main, 'r') as stream:
+											data = yaml.safe_load(stream)
+										basedir = os.path.dirname(role_tasks_main)
+										task_show(basedir, data, rvars, html, "", "    ")
+
+								html.add(bs_row_end())
+								html.add(bs_card_end())
+								html.add(bs_col_end())
+
+
+								print("")
+							print("")
+
+
+
+
+		html.add(bs_row_end())
+
+		return html.end()
+
 
 	def build_tree(self, group="all", prefix=""):
 		data = ""

@@ -2,6 +2,7 @@
 #
 #
 
+cardid = 0
 hprefix = "      "
 osicons = {
 	"Debian": "debian",
@@ -27,17 +28,23 @@ def osicons_get(osfamily, distribution = ""):
 	else:
 		return "monitor"
 
-def bs_card_begin(title = "", icon = ""):
+def bs_card_begin(title = "", icon = "", collapse = False):
 	global hprefix
+	global cardid
+	classes = ""
+	toggle = ""
+	if collapse == True:
+		classes = "collapse"
 	html = ""
 	html += hprefix + "<div class='card'>\n"
 	if icon != "":
-		html += hprefix + " <div class='card-header'>" + title + "<img class='float-right' src='assets/MaterialDesignIcons/" + icon + ".svg'></div>\n"
+		html += hprefix + " <div class='card-header' data-toggle='" + classes + "' data-target='#cid" + str(cardid) + "'>" + title + "<img class='float-right' src='assets/MaterialDesignIcons/" + icon + ".svg'></div>\n"
 	elif title != "":
-		html += hprefix + " <div class='card-header'>" + title + "</div>\n"
-	html += hprefix + " <div class='card-body'>\n"
+		html += hprefix + " <div class='card-header' data-toggle='" + classes + "' data-target='#cid" + str(cardid) + "'>" + title + "</div>\n"
+	html += hprefix + " <div id='cid" + str(cardid) + "' class='card-body " + classes + "'>\n"
 	hprefix += " "
 	hprefix += " "
+	cardid += 1
 	return html
 
 def bs_card_end():

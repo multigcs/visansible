@@ -164,6 +164,10 @@ class HTTPServer_RequestHandler(BaseHTTPRequestHandler):
 			return
 		elif self.path.startswith("/tree"):
 			self.write_data(self.rf.show_tree())
+
+		elif self.path.startswith("/playbook"):
+			self.write_data(self.rf.show_playbook())
+
 		elif self.path.startswith("/assets/"):
 			if ".." in self.path:
 				self.send_response(404)

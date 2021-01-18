@@ -4,26 +4,43 @@
 
 import os
 
-class Spice():
 
-	def __init__(self, host):
-		self.host = host
-		self.spice_port = os.popen("virsh domdisplay " + self.host + "").read().strip()
+class Spice:
+    def __init__(self, host):
+        self.host = host
+        self.spice_port = os.popen("virsh domdisplay " + self.host + "").read().strip()
 
+    def get_port(self):
+        return self.spice_port
 
-	def get_port(self):
-		return self.spice_port
-
-
-	def show(self):
-		html = ""
-		if ":" in self.spice_port:
-			print("websockify 1" + self.spice_port.split(":")[2]  + " " + self.spice_port.split(":")[1].strip("/") + ":" + self.spice_port.split(":")[2] + " &")
-			os.system("websockify 1" + self.spice_port.split(":")[2]  + " " + self.spice_port.split(":")[1].strip("/") + ":" + self.spice_port.split(":")[2] + " &")
-			html = """
+    def show(self):
+        html = ""
+        if ":" in self.spice_port:
+            print(
+                "websockify 1"
+                + self.spice_port.split(":")[2]
+                + " "
+                + self.spice_port.split(":")[1].strip("/")
+                + ":"
+                + self.spice_port.split(":")[2]
+                + " &"
+            )
+            os.system(
+                "websockify 1"
+                + self.spice_port.split(":")[2]
+                + " "
+                + self.spice_port.split(":")[1].strip("/")
+                + ":"
+                + self.spice_port.split(":")[2]
+                + " &"
+            )
+            html = (
+                """
 	<div id="login">
 		<input type='hidden' id='host' name='host' value='localhost'> <!-- localhost -->
-		<input type='hidden' id='port' name='port' value='1""" + self.spice_port.split(":")[2] + """'>
+		<input type='hidden' id='port' name='port' value='1"""
+                + self.spice_port.split(":")[2]
+                + """'>
 		<input type='hidden' id='password' value=''>
 		<!-- label for="show_console">Show console </label><input type="checkbox" id="show_console" value="1" -->
 		<!-- button id="connectButton">Start</button -->
@@ -126,6 +143,5 @@ class Spice():
 		connect();
 	</script>
 		"""
-		return html
-
-
+            )
+        return html

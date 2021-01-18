@@ -3,17 +3,19 @@
 #
 
 
-class HtmlPage():
-
-	def __init__(self, title = "Visansible", subtitle = "", subtitle2 = "", embed = ""):
-		self.title = title
-		self.subtitle = subtitle
-		if self.subtitle == "":
-			self.subtitle = title
-		self.html = """<!DOCTYPE html>
+class HtmlPage:
+    def __init__(self, title="Visansible", subtitle="", subtitle2="", embed=""):
+        self.title = title
+        self.subtitle = subtitle
+        if self.subtitle == "":
+            self.subtitle = title
+        self.html = (
+            """<!DOCTYPE html>
 <html lang='en'>
  <head>
-  <title>""" + title + """</title>
+  <title>"""
+            + title
+            + """</title>
   <meta charset='utf-8'>
   <link rel='stylesheet' type='text/css' href='assets/vis/vis.min.css_' />
   <link rel='stylesheet' type='text/css' href='assets/bootstrap/css/bootstrap.css'>
@@ -114,7 +116,9 @@ td {
  <body>
    <div class="d-flex" id="wrapper">
     <div class="bg-light border-right" id="sidebar-wrapper">
-     <div class="sidebar-heading">""" + title + """</div>
+     <div class="sidebar-heading">"""
+            + title
+            + """</div>
      <div class="list-group list-group-flush">
       <a href="hosts" class="list-group-item list-group-item-action bg-light">Hosts</a>
       <a href="tree" class="list-group-item list-group-item-action bg-light">Tree</a>
@@ -126,7 +130,9 @@ td {
       <a target="_blank" href="export_cfg" class="list-group-item list-group-item-action bg-light">Inventory as CFG</a>
       <a target="_blank" href="export_csv" class="list-group-item list-group-item-action bg-light">Hosts as CSV</a>
      </div>
-""" + embed + """
+"""
+            + embed
+            + """
     </div>
     <div id="page-content-wrapper">
       <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
@@ -135,22 +141,27 @@ td {
          <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
-         <b>""" + subtitle + """</b>
+         <b>"""
+            + subtitle
+            + """</b>
          <ul class="navbar-nav ml-auto mt-2 mt-lg-0">
           <li class="nav-item active">
-           <a class="nav-link" href="#">""" + subtitle2 + """</a>
+           <a class="nav-link" href="#">"""
+            + subtitle2
+            + """</a>
           </li>
          </ul>
         </div>
       </nav>
       <div class="container-fluid main-content">
 """
+        )
 
-	def add(self, html):
-		self.html += str(html)
+    def add(self, html):
+        self.html += str(html)
 
-	def end(self):
-		self.html += """
+    def end(self):
+        self.html += """
     </div><!--/main-content-->
    </div>
   </div>
@@ -163,5 +174,4 @@ td {
  </body>
 </html>
 """
-		return self.html
-
+        return self.html

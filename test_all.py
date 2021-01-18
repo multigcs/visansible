@@ -12,23 +12,25 @@ rf = RenderFacts(inventory)
 
 
 def test_show_hostdata():
-	for host in inventory["hosts"]:
-		ret = rf.show_hostdata(host)
+    for host in inventory["hosts"]:
+        ret = rf.show_hostdata(host)
+
 
 def test_show_graph():
-	ret = rf.show_graph()
+    ret = rf.show_graph()
+
 
 def test_show_csv():
-	ret = rf.show_csv()
+    ret = rf.show_csv()
+
 
 def test_show_hosts():
-	ret = rf.show_hosts()
+    ret = rf.show_hosts()
+
 
 def test_show_inventory():
-	ret = rf.show_inventory()
+    ret = rf.show_inventory()
+
 
 def test_show_stats():
-	ret = rf.show_stats()
-
-
-
+    ret = rf.show_stats()

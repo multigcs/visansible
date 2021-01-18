@@ -235,10 +235,10 @@ def task_show(tasksdir, tasks, rvars, html="", parent="", prefix=""):
 
 				with_sequence_options = vars_replace(rvars, with_sequence_options)
 				print("%s  with_sequence: %s" % (prefix, with_sequence_options))
-				if with_sequence_options.startswith("count="):
-					num = with_sequence_options.split("=")[-1]
-					for n in range(0, int(num)):
-						ritems.append({'raw': str(n + 1)})
+#				if with_sequence_options.startswith("count="):
+#					num = with_sequence_options.split("=")[-1]
+#					for n in range(0, int(num)):
+#						ritems.append({'raw': str(n + 1)})
 
 			if 'template' in item:
 				icon = "file"
@@ -471,15 +471,26 @@ class RenderFacts():
 
 		graph = VisGraph("visgraph", self.vasetup.get("graph", {}), "800px")
 
+		hosts = self.inventory["hosts"]
+
 		self.color_n = 0
-		for host in self.inventory["hosts"]:
-			invHost = self.inventory["hosts"][host]
+		n = 0
+		for host in hosts:
+			n += 1
+			if n > 250:
+				break
+			invHost = hosts[host]
 			if "0" in invHost and "ansible_facts" in invHost["0"]:
 				invHostLatestFacts = invHost["0"]["ansible_facts"]
 				if mode == "network":
 					self.show_host_graph_network_pre(graph, invHostLatestFacts, "host_" + host, stamp)
-		for host in self.inventory["hosts"]:
-			invHost = self.inventory["hosts"][host]
+		n = 0
+		for host in hosts:
+			invHost = hosts[host]
+
+			n += 1
+			if n > 250:
+				break
 
 			if mode == "group":
 				lastGroup = ""
@@ -497,13 +508,11 @@ class RenderFacts():
 				if "0" in invHost and "ansible_facts" in invHost["0"]:
 					invHostLatest = invHost["0"]
 					invHostLatestFacts = invHostLatest["ansible_facts"]
-					fqdn = invHostLatestFacts["ansible_fqdn"]
-					osfamily = invHostLatestFacts["ansible_os_family"]
-					distribution = invHostLatestFacts["ansible_distribution"]
-					productname = ""
-					if "ansible_product_name" in invHostLatestFacts:
-						productname = invHostLatestFacts["ansible_product_name"]
-					architecture = invHostLatestFacts["ansible_architecture"]
+					fqdn = invHostLatestFacts.get("ansible_fqdn", host)
+					osfamily = invHostLatestFacts.get("ansible_os_family", "")
+					distribution = invHostLatestFacts.get("ansible_distribution", "")
+					productname = invHostLatestFacts.get("ansible_product_name", "")
+					architecture = invHostLatestFacts.get("ansible_architecture", "")
 					#graph.node_add("host_" + host, host + "\\n" + fqdn + "\\n" + osfamily + "\\n" + productname + "\\n" + architecture, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
 					graph.node_add("host_" + host, host + "\\n" + osfamily, osicons_get(osfamily, distribution), "font: {color: '#0000FF'}")
 					if mode == "network":
@@ -539,7 +548,7 @@ class RenderFacts():
 						self.ipv4_ips[address] = parentnode + "_ipv4_" + address
 
 
-	def show_host_graph_network(self, graph, facts, parentnode, stamp = "0", simple = False):
+	def show_host_graph_network(self, graph, facts, parentnode, stamp="0", simple=False):
 		gateway = ""
 		gateway_interface = ""
 		if "ansible_default_ipv4" in facts:
@@ -578,22 +587,26 @@ class RenderFacts():
 										graph.node_add("cloud", "0.0.0.0", "weather-cloudy")
 										graph.edge_add("gateway_" + gateway_address, "cloud")
 								else:
-									## show ipv4 ##
-									graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, "ipv4")
-									graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
-									## show ipv4-network ##
-									graph.node_add("network_" + network, network, "net");
-									## default route ##
-									if gateway_interface == device:
-										if gateway_address in self.ipv4_ips:
-											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+									if False:
+										## show ipv4 ##
+										graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, "ipv4")
+										graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
+										## show ipv4-network ##
+										graph.node_add("network_" + network, network, "net");
+										## default route ##
+										if gateway_interface == device:
+											if gateway_address in self.ipv4_ips:
+												graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+											else:
+												graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.colors[self.color_n] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+												self.color_n = self.color_n + 1
+												if self.color_n >= len(self.colors):
+													self.color_n = 0; 
 										else:
-											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.colors[self.color_n] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
-											self.color_n = self.color_n + 1
-											if self.color_n >= len(self.colors):
-												self.color_n = 0; 
+											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
 									else:
-										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
+										graph.node_add("network_" + network, network, "net");
+										graph.edge_add(parentnode, "network_" + network)
 									## show ipv4-gateway ##
 									if gateway_interface == device:
 										if gateway_address not in self.ipv4_ips:
@@ -623,23 +636,27 @@ class RenderFacts():
 									graph.node_add("cloud", "0.0.0.0", "weather-cloudy")
 									graph.edge_add("gateway_" + gateway_address, "cloud")
 							else:
-								## show ipv4 ##
-								graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, "ipv4")
-								#graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, self.pnp4nagios + "/pnp4nagios/testnetz/pnp4nagios/index.php/image?host=" + parentnode.replace("host_", "") + "&srv=Interface_1&theme=facelift&baseurl=%2Ftestnetz%2Fcheck_mk%2F&view=0&source=0&start=1576596319&end=1576610719&w=50&h=20")
-								graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
-								## show ipv4-network ##
-								graph.node_add("network_" + network, network, "net");
-								## default route ##
-								if gateway_interface == device:
-									if gateway_address in self.ipv4_ips:
-										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+								if False:
+									## show ipv4 ##
+									graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, "ipv4")
+									#graph.node_add(parentnode + "_ipv4_" + address, address + "\\n" + netmask, self.pnp4nagios + "/pnp4nagios/testnetz/pnp4nagios/index.php/image?host=" + parentnode.replace("host_", "") + "&srv=Interface_1&theme=facelift&baseurl=%2Ftestnetz%2Fcheck_mk%2F&view=0&source=0&start=1576596319&end=1576610719&w=50&h=20")
+									graph.edge_add(parentnode, parentnode + "_ipv4_" + address)
+									## show ipv4-network ##
+									graph.node_add("network_" + network, network, "net");
+									## default route ##
+									if gateway_interface == device:
+										if gateway_address in self.ipv4_ips:
+											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.ipv4_ips[gateway_address] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+										else:
+											graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.colors[self.color_n] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
+											self.color_n = self.color_n + 1
+											if self.color_n >= len(self.colors):
+												self.color_n = 0; 
 									else:
-										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network, "color: { color: '" + self.colors[self.color_n] + "'}, arrows: {to: true}, label: 'gw:." + gateway_address.split(".")[-1] + "'")
-										self.color_n = self.color_n + 1
-										if self.color_n >= len(self.colors):
-											self.color_n = 0; 
+										graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
 								else:
-									graph.edge_add(parentnode + "_ipv4_" + address, "network_" + network)
+									graph.node_add("network_" + network, network, "net");
+									graph.edge_add(parentnode, "network_" + network)
 								## show ipv4-gateway ##
 								if gateway_interface == device:
 									if gateway_address not in self.ipv4_ips:
@@ -1744,7 +1761,7 @@ class RenderFacts():
 		html = HtmlPage("Visansible");
 		html.add(bs_row_begin())
 
-		playbook_file = "ansible-tine/deploy_playbook.yml"
+		playbook_file = "ansible-xml/xmlapi-playbook-dev.yml"
 		if os.path.isfile(playbook_file):
 			with open(playbook_file, 'r') as stream:
 				rvars = {}
@@ -1858,8 +1875,8 @@ class RenderFacts():
 						if "0" in invHost and "ansible_facts" in invHost["0"]:
 							invHostLatest = invHost["0"]
 							invHostLatestFacts = invHostLatest["ansible_facts"]
-							osfamily = invHostLatestFacts["ansible_os_family"]
-							distribution = invHostLatestFacts["ansible_distribution"]
+							osfamily = invHostLatestFacts.get("ansible_os_family", "")
+							distribution = invHostLatestFacts.get("ansible_distribution", "")
 							icon = osicons_get(osfamily, distribution)
 						data += prefix + "|  " + "+-<a href=\"/host?host=" + host + "\"><img src=\"assets/MaterialDesignIcons/" + icon + ".svg\">" + host + "</a>\n"
 #						for option in self.inventory["hosts"][host]["options"]:
@@ -2009,7 +2026,12 @@ class RenderFacts():
 								matches = {}
 								res, matches = self.search_element(facts, psearch, "", matches)
 								if res == False:
-									match = False
+									if psearch.lower() in host.lower():
+										rank = 5
+										match = True
+										searchinfo += psearch + ":(host(" + str(rank) + ")=" + self.matchmark(host.lower(), psearch, "#FFABAB") + ") " + str(rank) + "<br />"
+									else:
+										match = False
 								else:
 									rank = 0
 									rank2 = 0
@@ -2252,6 +2274,9 @@ class RenderFacts():
 				html.add(" 'value': " + str(stats[option][label]) + ",\n")
 				html.add("},\n")
 				color_n += 1
+				if color_n >= len(colors):
+					color_n = 0
+
 			html.add("		]\n")
 			html.add("	},\n")
 			html.add("	'labels': {\n")
@@ -2302,7 +2327,10 @@ class RenderFacts():
 
 
 	def matchmark(self, text, old, color):
-		index_l = text.lower().index(old.lower())
+		try:
+			index_l = text.lower().index(old.lower())
+		except Exception:
+			index_l = 0
 		return text[:index_l] + "<b style='color: " + color + ";'>" + text[index_l:][:len(old)] + "</b>" + text[index_l + len(old):] 
 
 
